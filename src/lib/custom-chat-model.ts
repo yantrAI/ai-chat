@@ -10,7 +10,7 @@ import {
   BaseMessage,
 } from "@langchain/core/messages";
 import { ChatResult, ChatGenerationChunk } from "@langchain/core/outputs";
-import { HfInference } from "@huggingface/inference";
+import { HuggingFaceInference } from "@langchain/community/llms/hf";
 
 interface HuggingFaceChatOptions extends BaseChatModelCallOptions {
   maxTokens?: number;
@@ -25,7 +25,7 @@ interface HuggingFaceChatParams extends BaseChatModelParams {
 }
 
 export class HuggingFaceChat extends BaseChatModel<HuggingFaceChatOptions> {
-  private client: HfInference;
+  private client: HuggingFaceInference;
   private model: string;
   private temperature: number;
   private maxTokens: number;
@@ -36,7 +36,12 @@ export class HuggingFaceChat extends BaseChatModel<HuggingFaceChatOptions> {
 
   constructor(fields: HuggingFaceChatParams) {
     super(fields);
-    this.client = new HfInference(fields.apiKey);
+    this.client = new HuggingFaceInference({
+      model: fields.model,
+      apiKey: fields.apiKey,
+      temperature: fields.temperature ?? 0.7,
+      maxTokens: fields.maxTokens ?? 500,
+    });
     this.model = fields.model;
     this.temperature = fields.temperature ?? 0.7;
     this.maxTokens = fields.maxTokens ?? 500;
@@ -77,7 +82,7 @@ export class HuggingFaceChat extends BaseChatModel<HuggingFaceChatOptions> {
     const systemMessage = messages.find((m) => m._getType() === "system");
     const userMessage = messages[messages.length - 1];
     const recentHistory = messages
-      .slice(-4) // Get last 2 pairs of messages
+      .slice(-4)
       .filter((m) => m._getType() !== "system")
       .map((m) => m.content)
       .join("\n");
@@ -99,26 +104,18 @@ Response:`;
   ): AsyncGenerator<ChatGenerationChunk> {
     try {
       const prompt = this._convertMessagesToPrompt(messages);
-      const stream = await this.client.textGenerationStream({
-        model: this.model,
-        inputs: prompt,
-        parameters: {
-          max_new_tokens: this.maxTokens,
-          temperature: this.temperature,
-          ...options,
-          return_full_text: false,
-        },
+      const stream = await this.client.stream(prompt, {
+        ...options,
       });
 
       let buffer = "";
       let wordBuffer = "";
 
       for await (const chunk of stream) {
-        const text = chunk.token.text;
-        if (!text) continue;
+        if (!chunk) continue;
 
         // Add to word buffer
-        wordBuffer += text;
+        wordBuffer += chunk;
 
         // If we have a complete word or punctuation
         if (wordBuffer.match(/[.!?,;\s]$/)) {
@@ -177,18 +174,11 @@ Response:`;
       await runManager?.handleText("Generating response...");
 
       const prompt = this._convertMessagesToPrompt(messages);
-      const response = await this.client.textGeneration({
-        model: this.model,
-        inputs: prompt,
-        parameters: {
-          max_new_tokens: this.maxTokens,
-          temperature: this.temperature,
-          ...options,
-          return_full_text: false,
-        },
+      const response = await this.client.invoke(prompt, {
+        ...options,
       });
 
-      const content = this.formatText(response.generated_text);
+      const content = this.formatText(response);
       await runManager?.handleText(content);
 
       const tokenUsage = {

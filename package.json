@@ -9,7 +9,6 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@huggingface/inference": "^2.6.4",
     "@langchain/community": "^0.3.26",
     "@langchain/core": "^0.3.33",
     "@radix-ui/react-avatar": "^1.1.2",
