@@ -29,6 +29,12 @@ export async function POST(req: Request) {
   try {
     const { message, chatHistory = [] } = await req.json();
 
+    if (!message) {
+      return new Response(JSON.stringify({ error: "Message is required" }), {
+        status: 400,
+      });
+    }
+
     // Convert chat history to message objects
     const history = chatHistory.map((msg: { role: string; content: string }) =>
       msg.role === "user"
@@ -46,7 +52,8 @@ export async function POST(req: Request) {
 4. For math or coding, just show the solution
 5. Don't mention that you're an AI or language model
 6. Don't ask if there's anything else you can help with
-7. Don't use emojis or special characters`
+7. Don't use emojis or special characters
+8. Format your responses in markdown when appropriate`
       ),
       ...history,
       new HumanMessage(message),
@@ -59,7 +66,13 @@ export async function POST(req: Request) {
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
       async start(controller) {
+        let hasStartedResponse = false;
         try {
+          console.log(
+            "Starting stream with messages:",
+            JSON.stringify(trimmedMessages, null, 2)
+          );
+
           const stream = await model._streamResponseChunks(
             trimmedMessages,
             {
@@ -72,17 +85,49 @@ export async function POST(req: Request) {
           for await (const chunk of stream) {
             const text = chunk.text;
             if (text?.trim()) {
-              const encodedChunk = encoder.encode(`data: ${text}\n\n`);
+              hasStartedResponse = true;
+              // Format the text to ensure proper newlines
+              const formattedText = text
+                .replace(/(\d+\.)/g, "\n$1") // Add newline before numbered lists
+                .replace(/\n+/g, "\n") // Normalize multiple newlines
+                .trim();
+              const encodedChunk = encoder.encode(`data: ${formattedText}\n\n`);
               controller.enqueue(encodedChunk);
+            } else {
+              console.log("Received empty chunk from model");
             }
+          }
+
+          if (!hasStartedResponse) {
+            console.error("No response was generated from the model");
+            // If no response was generated, send an error
+            const errorChunk = encoder.encode(
+              `data: Error: Model did not generate any response. Please try again.\n\n`
+            );
+            controller.enqueue(errorChunk);
           }
 
           // Send end of stream
           controller.enqueue(encoder.encode("data: [DONE]\n\n"));
           controller.close();
         } catch (error) {
-          console.error("Streaming error:", error);
-          controller.error(error);
+          console.error("Streaming error details:", {
+            error,
+            message: error instanceof Error ? error.message : "Unknown error",
+            stack: error instanceof Error ? error.stack : undefined,
+          });
+
+          const errorMessage =
+            error instanceof Error
+              ? `Error: ${error.message}\nStack: ${error.stack}`
+              : "Unknown error occurred";
+
+          console.error("Full error context:", errorMessage);
+
+          const errorChunk = encoder.encode(`data: Error: ${errorMessage}\n\n`);
+          controller.enqueue(errorChunk);
+          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+          controller.close();
         }
       },
     });
