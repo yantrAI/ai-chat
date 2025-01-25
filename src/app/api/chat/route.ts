@@ -16,15 +16,14 @@ type ModelConfig = {
     model: string;
     temperature: number;
     maxTokens: number;
+    stopTokens?: string[];
+    promptTemplate?: {
+      system?: string;
+      human: string;
+      assistant?: string;
+    };
   };
 };
-
-// Create a chat prompt template following the exact format from the issue
-const prompt = ChatPromptTemplate.fromMessages([
-  ["system", ""], // Empty system prompt as suggested
-  ["human", "<|user|> {message}<|end|>"],
-  ["assistant", "<|assistant|>"], // No %2 needed as we're not using template variables for response
-]);
 
 export async function POST(req: Request) {
   const controller = new AbortController();
@@ -62,10 +61,26 @@ export async function POST(req: Request) {
       model: selectedModel.config.model,
       apiKey: process.env.HUGGINGFACE_API_KEY!,
       temperature: selectedModel.config.temperature,
-      maxTokens: Math.min(selectedModel.config.maxTokens, 4096), // Limit tokens as per issue discussion
+      maxTokens: Math.min(selectedModel.config.maxTokens, 2048),
     });
 
-    // Create the chain by piping the prompt to the model
+    // Create a model-specific prompt template
+    const messages: [string, string][] = [];
+    if (selectedModel.config.promptTemplate?.system) {
+      messages.push(["system", selectedModel.config.promptTemplate.system]);
+    }
+    messages.push([
+      "human",
+      selectedModel.config.promptTemplate?.human || "{message}",
+    ]);
+    if (selectedModel.config.promptTemplate?.assistant) {
+      messages.push([
+        "assistant",
+        selectedModel.config.promptTemplate.assistant,
+      ]);
+    }
+
+    const prompt = ChatPromptTemplate.fromMessages(messages);
     const chain = prompt.pipe(model);
 
     // Set up streaming with proper encoding
@@ -73,13 +88,16 @@ export async function POST(req: Request) {
     const stream = new ReadableStream({
       async start(controller) {
         let hasStartedResponse = false;
+        let tokenCount = 0;
+        const MAX_TOKENS = 2048;
+
         try {
           console.log("Starting stream with message:", message);
 
           const response = await chain.invoke({
             message,
             signal,
-            stop: ["<|end|>", "<|user|>", "<|assistant|>", "</s>"], // Stop tokens from the issue
+            stop: selectedModel.config.stopTokens || ["</s>"],
           });
 
           // Process the response
@@ -94,20 +112,35 @@ export async function POST(req: Request) {
                     .join(" ")
                 : "";
 
-            const formattedText = content
-              .replace(/(\d+\.)/g, "\n$1")
-              .replace(/\n+/g, "\n")
-              .replace(/<\|end\|>/g, "")
-              .replace(/<\|user\|>/g, "")
-              .replace(/<\|assistant\|>/g, "")
-              .replace(/<\/s>/g, "")
-              .replace(/\s*<\/s>\s*/g, "")
-              .replace(/\s+/g, " ")
-              .trim();
+            // Count approximate tokens
+            tokenCount = content.split(/\s+/).length;
 
-            if (formattedText) {
-              const encodedChunk = encoder.encode(`data: ${formattedText}\n\n`);
-              controller.enqueue(encodedChunk);
+            // Only process if within token limit
+            if (tokenCount <= MAX_TOKENS) {
+              const formattedText = content
+                .replace(/(\d+\.)/g, "\n$1")
+                .replace(/\n+/g, "\n")
+                .replace(/<\|system\|>.*?<\|end\|>/g, "")
+                .replace(/<\|user\|>.*?<\|end\|>/g, "")
+                .replace(/<\|assistant\|>/g, "")
+                .replace(/<\|end\|>/g, "")
+                .replace(/<\/s>/g, "")
+                .replace(/\s*<\/s>\s*/g, "")
+                .replace(/\s+/g, " ")
+                .trim();
+
+              if (formattedText) {
+                const encodedChunk = encoder.encode(
+                  `data: ${formattedText}\n\n`
+                );
+                controller.enqueue(encodedChunk);
+              }
+            } else {
+              console.warn("Response exceeded token limit");
+              const errorChunk = encoder.encode(
+                `data: Response exceeded maximum length.\n\n`
+              );
+              controller.enqueue(errorChunk);
             }
           }
 
