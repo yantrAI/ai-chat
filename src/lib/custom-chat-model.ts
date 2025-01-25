@@ -59,23 +59,12 @@ export class HuggingFaceChat extends BaseChatModel<HuggingFaceChatOptions> {
     return text
       .replace(/<eos>/g, "")
       .replace(/<end_of_turn>/g, "")
-      .replace(/\[\/INST\]/g, "")
-      .replace(/\[INST\]/g, "")
-      .replace(/^AI:?\s*/i, "")
-      .replace(/^Assistant:?\s*/i, "")
-      .replace(/^System:?\s*/i, "")
-      .replace(/^Human:?\s*/i, "")
-      .replace(/^User:?\s*/i, "")
-      .replace(/^Context:?\s*/i, "")
-      .replace(/Human:.*$/gm, "")
-      .replace(/User:.*$/gm, "")
-      .replace(/Assistant:.*$/gm, "")
-      .replace(/System:.*$/gm, "")
-      .replace(/Context:.*$/gm, "")
-      .replace(/([a-z])([A-Z])/g, "$1 $2")
-      .replace(/([.!?])(?=\w)/g, "$1 ")
-      .replace(/\s+/g, " ")
-      .trim();
+      .replace(/\s*<\/s>\s*/g, "")
+      .replace(/<\|im_end\|>/g, "")
+      .replace(/<\|endoftext\|>/g, "")
+      .replace(/<\|end_of_text\|>/g, "")
+      .replace(/<\|begin_of_text\|>/g, "")
+      .replace(/<\|begin_of_text\|>:\/\/>/g, "");
   }
 
   private _convertMessagesToPrompt(messages: BaseMessage[]): string {
@@ -114,19 +103,18 @@ Response:`;
       for await (const chunk of stream) {
         if (!chunk) continue;
 
-        // Add to word buffer
         wordBuffer += chunk;
 
-        // If we have a complete word or punctuation
-        if (wordBuffer.match(/[.!?,;\s]$/)) {
+        // If we have a complete word, line break, or punctuation
+        if (wordBuffer.match(/[.!?,;\s\n]$/)) {
           const formattedText = this.formatText(wordBuffer);
           wordBuffer = "";
 
           if (formattedText) {
             buffer += formattedText;
 
-            // Send complete sentences or reasonably sized chunks
-            if (buffer.match(/[.!?]\s*$/) || buffer.length > 30) {
+            // Send complete sentences, line breaks, or reasonably sized chunks
+            if (buffer.match(/[.!?\n]\s*$/) || buffer.length > 30) {
               const cleanContent = buffer.trim();
               if (cleanContent) {
                 const messageChunk = new AIMessageChunk({
