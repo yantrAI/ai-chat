@@ -58,6 +58,7 @@ export class HuggingFaceChat extends BaseChatModel<HuggingFaceChatOptions> {
   }
 
   private formatText(text: string): string {
+    // Only remove stop words, keep everything else exactly as is
     return text
       .replace(/<eos>/g, "")
       .replace(/<end_of_turn>/g, "")
@@ -98,52 +99,21 @@ Response:`;
         ...options,
       });
 
-      let buffer = "";
-      let wordBuffer = "";
-
       for await (const chunk of stream) {
         if (!chunk) continue;
-
-        wordBuffer += chunk;
-
-        // If we have a complete word, line break, or punctuation
-        if (wordBuffer.match(/[.!?,;\s]$/)) {
-          const formattedText = this.formatText(wordBuffer);
-          wordBuffer = "";
-
-          if (formattedText) {
-            buffer += formattedText;
-
-            // Send complete sentences or reasonably sized chunks
-            if (buffer.match(/[.!?]\s*$/) || buffer.length > 30) {
-              const cleanContent = buffer.trim();
-              if (cleanContent) {
-                const messageChunk = new AIMessageChunk({
-                  content: cleanContent,
-                });
-                await runManager?.handleLLMNewToken(cleanContent);
-
-                yield new ChatGenerationChunk({
-                  message: messageChunk,
-                  text: cleanContent,
-                });
-                buffer = "";
-              }
-            }
-          }
-        }
-      }
-
-      // Handle any remaining text
-      if (wordBuffer || buffer) {
-        const finalText = this.formatText(wordBuffer + buffer).trim();
-        if (finalText) {
-          const messageChunk = new AIMessageChunk({ content: finalText });
-          await runManager?.handleLLMNewToken(finalText);
+        
+        // Just remove stop words and send immediately
+        const rawText = this.formatText(chunk);
+        
+        if (rawText) {
+          const messageChunk = new AIMessageChunk({
+            content: rawText,
+          });
+          await runManager?.handleLLMNewToken(rawText);
 
           yield new ChatGenerationChunk({
             message: messageChunk,
-            text: finalText,
+            text: rawText,
           });
         }
       }

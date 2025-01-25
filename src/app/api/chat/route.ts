@@ -88,71 +88,37 @@ export async function POST(req: Request) {
     const stream = new ReadableStream({
       async start(controller) {
         let hasStartedResponse = false;
-        let tokenCount = 0;
-        const MAX_TOKENS = 2048;
 
         try {
           console.log("Starting stream with message:", message);
 
-          const response = await chain.invoke({
+          // Use the streaming API
+          const stream = await chain.stream({
             message,
             signal,
             stop: selectedModel.config.stopTokens || ["</s>"],
           });
 
-          // Process the response
-          if (response) {
+          for await (const chunk of stream) {
             hasStartedResponse = true;
-            const content =
-              typeof response.content === "string"
-                ? response.content
-                : Array.isArray(response.content)
-                  ? response.content
-                      .map((c) => (typeof c === "string" ? c : ""))
-                      .join(" ")
-                  : "";
-
-            // Count approximate tokens
-            tokenCount = content.split(/\s+/).length;
-
-            // Only process if within token limit
-            if (tokenCount <= MAX_TOKENS) {
-              const formattedText = content
-                .replace(/(\d+\.)/g, "\n$1")
-                .replace(/<\|system\|>.*?<\|end\|>/g, "")
-                .replace(/<\|user\|>.*?<\|end\|>/g, "")
-                .replace(/<\|assistant\|>/g, "")
-                .replace(/<\|end\|>/g, "")
-                .replace(/<\/s>/g, "")
-                .replace(/\s*<\/s>\s*/g, "")
-                .replace(/\s+/g, " ")
-                .trim();
-
-              if (formattedText) {
-                const encodedChunk = encoder.encode(
-                  `data: ${formattedText}\n\n`
-                );
-                controller.enqueue(encodedChunk);
-              }
-            } else {
-              console.warn("Response exceeded token limit");
-              const errorChunk = encoder.encode(
-                `data: Response exceeded maximum length.\n\n`
-              );
-              controller.enqueue(errorChunk);
+            
+            if (chunk.content) {
+              console.log("Raw chunk content:", chunk.content);
+              // Send chunk without adding any extra spaces
+              controller.enqueue(encoder.encode(`data:${chunk.content}\n\n`));
             }
           }
 
           if (!hasStartedResponse) {
             console.error("No response was generated from the model");
             const errorChunk = encoder.encode(
-              `data: Error: Model did not generate any response. Please try again.\n\n`
+              `data:Error: Model did not generate any response. Please try again.\n\n`
             );
             controller.enqueue(errorChunk);
           }
 
           // Send end of stream
-          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+          controller.enqueue(encoder.encode("data:[DONE]\n\n"));
           controller.close();
         } catch (error) {
           console.error("Streaming error details:", {
@@ -170,7 +136,7 @@ export async function POST(req: Request) {
 
           console.error("Full error context:", errorMessage);
 
-          const errorChunk = encoder.encode(`data: Error: ${errorMessage}\n\n`);
+          const errorChunk = encoder.encode(`data:Error: ${errorMessage}\n\n`);
           controller.enqueue(errorChunk);
           controller.enqueue(encoder.encode("data: [DONE]\n\n"));
           controller.close();

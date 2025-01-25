@@ -31,7 +31,7 @@ const components: Components = {
   pre: ({ children }) => children,
   code: ({ className, children }) => {
     const match = /language-(\w+)/.exec(className || "");
-    const code = String(children).replace(/\n$/, "");
+    const code = String(children);
 
     // If we have a language class, this is a code block
     if (match) {
@@ -156,128 +156,70 @@ const ChatMessage = ({ role, content }: ChatMessageProps) => {
   });
   const [Exited, setExited] = useState(false);
 
-  // Format code using Prettier
-  const formatCode = async (code: string, language: string) => {
-    try {
-      // Default to typescript for unknown languages
-      const parser = getParserForLanguage(language);
-      if (!parser) return code;
-
-      const formatted = await prettier.format(code, {
-        parser,
-        plugins: [prettierPluginBabel, prettierPluginEstree],
-        semi: true,
-        singleQuote: true,
-        trailingComma: "es5",
-        printWidth: 80,
-        tabWidth: 2,
-      });
-
-      // Remove any leading/trailing newlines while preserving indentation
-      return formatted.replace(/^\n+|\n+$/g, "");
-    } catch (err) {
-      console.error("Failed to format code:", err);
-      return code;
-    }
-  };
-
-  // Get the appropriate Prettier parser for a language
-  const getParserForLanguage = (language: string): string | null => {
-    const parserMap: Record<string, string> = {
-      javascript: "babel",
-      typescript: "typescript",
-      jsx: "babel",
-      tsx: "typescript",
-      json: "json",
-      css: "css",
-      scss: "scss",
-      less: "less",
-      html: "html",
-      markdown: "markdown",
-      yaml: "yaml",
-      graphql: "graphql",
-    };
-    return parserMap[language.toLowerCase()] || null;
-  };
-
-  // Improved content processing with better error handling and streaming support
   useEffect(() => {
     if (!isUser && content && !Exited) {
       const processContent = async () => {
         try {
+          // Keep content exactly as received
+          let currentContent = content;
+
           if (!codeBlockState.inBlock) {
-            // Check if content contains a code block start
-            const codeBlockMatch = content.match(/```(\w+)?\s*([\s\S]*?)$/);
+            const codeBlockStart = currentContent.indexOf('```');
+            
+            if (codeBlockStart !== -1) {
+              const beforeCode = currentContent.slice(0, codeBlockStart);
+              const afterStartMarker = currentContent.slice(codeBlockStart + 3);
+              const languageMatch = afterStartMarker.match(/^(\w+)?\n/);
+              const language = languageMatch ? languageMatch[1] || 'text' : 'text';
+              
+              const codeContent = languageMatch 
+                ? afterStartMarker.slice(languageMatch[0].length)
+                : afterStartMarker;
 
-            if (codeBlockMatch) {
-              const [_, language = "text", codeContent] = codeBlockMatch;
-              const beforeCode = content
-                .slice(0, content.indexOf("```"))
-                .trim();
-
-              // Update state in a single operation
               setCodeBlockState({
                 inBlock: true,
                 language,
                 textBeforeCode: beforeCode,
               });
 
-              // Set initial parts
-              setFormattedParts(
-                [
-                  { type: "text" as const, content: beforeCode },
-                  {
-                    type: "code" as const,
-                    content: codeContent,
-                    language,
-                    isStreaming: true,
-                  },
-                ].filter((part) => part.content)
-              );
-            } else {
-              // No code block, treat as regular text
-              setFormattedParts([{ type: "text", content }]);
-            }
-          } else {
-            // We're in a code block, check for ending
-            if (content.includes("```")) {
-              // Code block is complete
-              const lastIndex = content.lastIndexOf("```");
-              const fullContent = content.substring(0, lastIndex).trim();
-              const afterCode = content.substring(lastIndex + 3).trim();
-
-              // Use the same pattern as entry for consistency
-              const codeStartMatch = content.match(/```(\w+)?\s*([\s\S]*?)```/);
-              let actualCode = codeStartMatch
-                ? codeStartMatch[2]
-                    .replace(/^\n+|\n+$/g, "")
-                    .split("\n")
-                    .map((line) => line.replace(/^\s{4}/, ""))
-                    .join("\n")
-                : fullContent;
-
-              // Format the code using Prettier if possible
-              actualCode = await formatCode(
-                actualCode,
-                codeBlockState.language
-              );
-
-              const parts = [
-                {
-                  type: "text" as const,
-                  content: codeBlockState.textBeforeCode,
-                },
+              setFormattedParts([
+                ...(beforeCode ? [{ type: "text" as const, content: beforeCode }] : []),
                 {
                   type: "code" as const,
-                  content: actualCode,
+                  content: codeContent,
+                  language,
+                  isStreaming: true,
+                },
+              ]);
+            } else {
+              // Just display the raw content
+              setFormattedParts([{ type: "text", content: currentContent }]);
+            }
+          } else {
+            const codeEndIndex = currentContent.lastIndexOf('```');
+            const codeStartIndex = currentContent.indexOf('```');
+            const hasCompleteBlock = codeEndIndex !== -1 && codeEndIndex > codeStartIndex + 3;
+
+            if (hasCompleteBlock) {
+              const fullContent = currentContent.substring(0, codeEndIndex);
+              const afterCode = currentContent.substring(codeEndIndex + 3);
+
+              const codeContent = fullContent
+                .slice(fullContent.indexOf('```') + 3)
+                .replace(/^(\w+)?\n/, '');
+
+              const parts = [
+                ...(codeBlockState.textBeforeCode
+                  ? [{ type: "text" as const, content: codeBlockState.textBeforeCode }]
+                  : []),
+                {
+                  type: "code" as const,
+                  content: codeContent,
                   language: codeBlockState.language,
                   isStreaming: false,
                 },
-              ].filter((part) => part.content);
-
-              if (afterCode) {
-                parts.push({ type: "text" as const, content: afterCode });
-              }
+                ...(afterCode ? [{ type: "text" as const, content: afterCode }] : []),
+              ];
 
               setFormattedParts(parts);
               setCodeBlockState({
@@ -287,68 +229,26 @@ const ChatMessage = ({ role, content }: ChatMessageProps) => {
               });
               setExited(true);
             } else {
-              // Still streaming code - use the same pattern for consistency
-              const codeMatch = content.match(/```(\w+)?\s*([\s\S]*)/);
-              let codeContent = codeMatch ? codeMatch[2] : content;
+              const codeContent = currentContent
+                .slice(currentContent.indexOf('```') + 3)
+                .replace(/^(\w+)?\n/, '');
 
-              // Preserve whitespace and add newlines for better formatting
-              if (codeBlockState.language.toLowerCase() === "python") {
-                codeContent = codeContent
-                  // First, normalize all whitespace
-                  .replace(/\s+/g, " ")
-                  // Add newlines after specific Python keywords
-                  .replace(
-                    /\b(def|class|if|for|while|try|except|finally|else|elif)\b\s*/g,
-                    "\n$1 "
-                  )
-                  // Add newlines after colons
-                  .replace(/:\s*/g, ":\n")
-                  // Add newlines after comments
-                  .replace(/#[^\n]*/g, (match) => match + "\n")
-                  // Add newlines before docstrings
-                  .replace(/"""/g, '\n"""')
-                  // Clean up multiple newlines
-                  .split("\n")
-                  .map((line) => line.trim())
-                  .filter((line) => line)
-                  .join("\n");
-              } else {
-                // For other languages (JavaScript, TypeScript, etc.)
-                codeContent = codeContent
-                  // First, normalize all whitespace
-                  .replace(/\s+/g, " ")
-                  // Add newlines after specific characters
-                  .replace(/([{};])/g, "$1\n")
-                  // Add newlines after keywords
-                  .replace(
-                    /\b(return|if|for|while|do|try|catch|finally|else)\b\s*/g,
-                    "\n$1 "
-                  )
-                  // Clean up multiple newlines
-                  .split("\n")
-                  .map((line) => line.trim())
-                  .filter((line) => line)
-                  .join("\n");
-              }
-
-              setFormattedParts(
-                [
-                  {
-                    type: "text" as const,
-                    content: codeBlockState.textBeforeCode,
-                  },
-                  {
-                    type: "code" as const,
-                    content: codeContent,
-                    language: codeBlockState.language,
-                    isStreaming: true,
-                  },
-                ].filter((part) => part.content)
-              );
+              setFormattedParts([
+                ...(codeBlockState.textBeforeCode
+                  ? [{ type: "text" as const, content: codeBlockState.textBeforeCode }]
+                  : []),
+                {
+                  type: "code" as const,
+                  content: codeContent,
+                  language: codeBlockState.language,
+                  isStreaming: true,
+                },
+              ]);
             }
           }
         } catch (err) {
           console.error("[ChatMessage] Content processing failed:", err);
+          // If anything fails, just show the raw content
           setFormattedParts([{ type: "text", content }]);
         }
       };
@@ -418,7 +318,7 @@ const ChatMessage = ({ role, content }: ChatMessageProps) => {
                     <MemoizedReactMarkdown
                       key={index}
                       remarkPlugins={[remarkGfm]}
-                      className="text-sm text-navy-lightest"
+                      className="text-sm text-navy-lightest whitespace-pre-wrap"
                       components={components}
                     >
                       {part.content}
@@ -430,6 +330,7 @@ const ChatMessage = ({ role, content }: ChatMessageProps) => {
                     language={part.language || "text"}
                     value={part.content}
                     isStreaming={part.isStreaming}
+                    showLineNumbers={part.content.includes("\n")}
                   />
                 )
               )}

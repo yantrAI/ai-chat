@@ -109,8 +109,8 @@ export default function ChatPage() {
           buffer = lines.pop() || "";
 
           for (const line of lines) {
-            if (line.startsWith("data: ")) {
-              const data = line.slice(5).trim();
+            if (line.startsWith("data:")) {
+              const data = line.slice(5); // Remove "data:" prefix
 
               if (data === "[DONE]") {
                 break;
@@ -120,16 +120,9 @@ export default function ChatPage() {
                 throw new Error(data.slice(7));
               }
 
+              // Append data without adding extra spaces
               markdownBuffer += data;
-
-              const processedMarkdown = markdownBuffer
-                .replace(/\* /g, "\n* ")
-                .replace(/(\d+\.) /g, "\n$1 ")
-                .replace(/```(\w+)?\n/g, "\n```$1\n")
-                .replace(/\n{3,}/g, "\n\n")
-                .trim();
-
-              fullMessage = processedMarkdown;
+              fullMessage = markdownBuffer;
 
               setMessages((prev) => {
                 const newMessages = [...prev];
