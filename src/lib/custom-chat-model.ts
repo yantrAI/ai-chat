@@ -106,15 +106,15 @@ Response:`;
         wordBuffer += chunk;
 
         // If we have a complete word, line break, or punctuation
-        if (wordBuffer.match(/[.!?,;\s\n]$/)) {
+        if (wordBuffer.match(/[.!?,;\s]$/)) {
           const formattedText = this.formatText(wordBuffer);
           wordBuffer = "";
 
           if (formattedText) {
             buffer += formattedText;
 
-            // Send complete sentences, line breaks, or reasonably sized chunks
-            if (buffer.match(/[.!?\n]\s*$/) || buffer.length > 30) {
+            // Send complete sentences or reasonably sized chunks
+            if (buffer.match(/[.!?]\s*$/) || buffer.length > 30) {
               const cleanContent = buffer.trim();
               if (cleanContent) {
                 const messageChunk = new AIMessageChunk({
