@@ -107,10 +107,10 @@ export async function POST(req: Request) {
               typeof response.content === "string"
                 ? response.content
                 : Array.isArray(response.content)
-                ? response.content
-                    .map((c) => (typeof c === "string" ? c : ""))
-                    .join(" ")
-                : "";
+                  ? response.content
+                      .map((c) => (typeof c === "string" ? c : ""))
+                      .join(" ")
+                  : "";
 
             // Count approximate tokens
             tokenCount = content.split(/\s+/).length;
@@ -119,7 +119,6 @@ export async function POST(req: Request) {
             if (tokenCount <= MAX_TOKENS) {
               const formattedText = content
                 .replace(/(\d+\.)/g, "\n$1")
-                .replace(/\n+/g, "\n")
                 .replace(/<\|system\|>.*?<\|end\|>/g, "")
                 .replace(/<\|user\|>.*?<\|end\|>/g, "")
                 .replace(/<\|assistant\|>/g, "")

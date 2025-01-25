@@ -75,8 +75,7 @@ export class HuggingFaceChat extends BaseChatModel<HuggingFaceChatOptions> {
     const recentHistory = messages
       .slice(-4)
       .filter((m) => m._getType() !== "system")
-      .map((m) => m.content)
-      .join("\n");
+      .map((m) => m.content);
 
     return `${systemMessage?.content || ""}
 
