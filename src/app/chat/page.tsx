@@ -130,7 +130,6 @@ export default function ChatPage() {
               throw new Error(data.slice(7));
             }
 
-            console.log("Received data (with escaped newlines):", JSON.stringify(data));
 
             // Append raw data without any processing
             markdownBuffer += data;

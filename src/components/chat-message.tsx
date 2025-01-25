@@ -54,14 +54,10 @@ const components: Components = {
     );
   },
   ul: ({ children }) => (
-    <ul className="list-disc pl-6 marker:text-navy-lighter">
-      {children}
-    </ul>
+    <ul className="list-disc pl-6 marker:text-navy-lighter">{children}</ul>
   ),
   ol: ({ children }) => (
-    <ol className="list-decimal pl-6 marker:text-navy-lighter">
-      {children}
-    </ol>
+    <ol className="list-decimal pl-6 marker:text-navy-lighter">{children}</ol>
   ),
   li: ({ children }) => <li className="leading-relaxed mb-1">{children}</li>,
   a: ({ children, href }) => (
@@ -144,50 +140,45 @@ const ChatMessage = ({ role, content }: ChatMessageProps) => {
     }>
   >([]);
 
-  // Track if we're currently in a code block
-  const [codeBlockState, setCodeBlockState] = useState<{
-    inBlock: boolean;
-    language: string;
-    textBeforeCode: string;
-  }>({
-    inBlock: false,
-    language: "text",
-    textBeforeCode: "",
-  });
-  const [Exited, setExited] = useState(false);
-
   useEffect(() => {
-    if (!isUser && content && !Exited) {
+    if (!isUser && content) {
       const processContent = async () => {
         try {
           // Keep content exactly as received
           let currentContent = content;
+          const codeBlockStart = currentContent.indexOf("```");
 
-          if (!codeBlockState.inBlock) {
-            const codeBlockStart = currentContent.indexOf("```");
+          // Always check for new code blocks
+          if (codeBlockStart !== -1) {
+            const beforeCode = currentContent.slice(0, codeBlockStart);
+            const afterStartMarker = currentContent.slice(codeBlockStart + 3);
+            const languageMatch = afterStartMarker.match(/^(\w+)?\n/);
+            const language = languageMatch ? languageMatch[1] || "text" : "text";
+            const codeEndIndex = currentContent.indexOf("```", codeBlockStart + 3);
 
-            if (codeBlockStart !== -1) {
-              const beforeCode = currentContent.slice(0, codeBlockStart);
-              const afterStartMarker = currentContent.slice(codeBlockStart + 3);
-              const languageMatch = afterStartMarker.match(/^(\w+)?\n/);
-              const language = languageMatch
-                ? languageMatch[1] || "text"
-                : "text";
-
-              const codeContent = languageMatch
-                ? afterStartMarker.slice(languageMatch[0].length)
-                : afterStartMarker;
-
-              setCodeBlockState({
-                inBlock: true,
-                language,
-                textBeforeCode: beforeCode,
-              });
+            if (codeEndIndex !== -1) {
+              // Complete code block
+              const codeContent = currentContent
+                .slice(codeBlockStart + 3, codeEndIndex)
+                .replace(/^(\w+)?\n/, "");
+              const afterCode = currentContent.slice(codeEndIndex + 3);
 
               setFormattedParts([
-                ...(beforeCode
-                  ? [{ type: "text" as const, content: beforeCode }]
-                  : []),
+                ...(beforeCode ? [{ type: "text" as const, content: beforeCode }] : []),
+                {
+                  type: "code" as const,
+                  content: codeContent,
+                  language,
+                  isStreaming: false,
+                },
+                ...(afterCode ? [{ type: "text" as const, content: afterCode }] : []),
+              ]);
+            } else {
+              // Incomplete code block
+              const codeContent = afterStartMarker.replace(/^(\w+)?\n/, "");
+
+              setFormattedParts([
+                ...(beforeCode ? [{ type: "text" as const, content: beforeCode }] : []),
                 {
                   type: "code" as const,
                   content: codeContent,
@@ -195,90 +186,20 @@ const ChatMessage = ({ role, content }: ChatMessageProps) => {
                   isStreaming: true,
                 },
               ]);
-            } else {
-              // Just display the raw content
-              setFormattedParts([{ type: "text", content: currentContent }]);
             }
           } else {
-            const codeStartIndex = currentContent.indexOf("```");
-            const codeEndIndex = currentContent.indexOf("```", codeStartIndex + 3);
-            const hasCompleteBlock = codeEndIndex !== -1;
-
-            if (hasCompleteBlock) {
-              const fullContent = currentContent.substring(0, codeEndIndex);
-              const afterCode = currentContent.substring(codeEndIndex + 3);
-
-              const codeContent = fullContent
-                .slice(fullContent.indexOf("```") + 3)
-                .replace(/^(\w+)?\n/, "");
-
-              const parts = [
-                ...(codeBlockState.textBeforeCode
-                  ? [
-                      {
-                        type: "text" as const,
-                        content: codeBlockState.textBeforeCode,
-                      },
-                    ]
-                  : []),
-                {
-                  type: "code" as const,
-                  content: codeContent,
-                  language: codeBlockState.language,
-                  isStreaming: false,
-                },
-                ...(afterCode
-                  ? [{ type: "text" as const, content: afterCode }]
-                  : []),
-              ];
-
-              setFormattedParts(parts);
-              setCodeBlockState({
-                inBlock: false,
-                language: "text",
-                textBeforeCode: "",
-              });
-              setExited(true);
-            } else {
-              const codeContent = currentContent
-                .slice(currentContent.indexOf("```") + 3)
-                .replace(/^(\w+)?\n/, "");
-
-              setFormattedParts([
-                ...(codeBlockState.textBeforeCode
-                  ? [
-                      {
-                        type: "text" as const,
-                        content: codeBlockState.textBeforeCode,
-                      },
-                    ]
-                  : []),
-                {
-                  type: "code" as const,
-                  content: codeContent,
-                  language: codeBlockState.language,
-                  isStreaming: true,
-                },
-              ]);
-            }
+            // No code block, just text
+            setFormattedParts([{ type: "text", content: currentContent }]);
           }
         } catch (err) {
           console.error("[ChatMessage] Content processing failed:", err);
-          // If anything fails, just show the raw content
           setFormattedParts([{ type: "text", content }]);
         }
       };
 
       processContent();
     }
-  }, [isUser, content, codeBlockState, Exited]);
-
-  // Reset Exited state when content changes
-  useEffect(() => {
-    if (content) {
-      setExited(false);
-    }
-  }, [content]);
+  }, [isUser, content]);
 
   const copyToClipboard = useCallback(async (text: string) => {
     try {
@@ -292,10 +213,9 @@ const ChatMessage = ({ role, content }: ChatMessageProps) => {
 
   return (
     <motion.div
-      layout
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3 }}
+      transition={{ duration: 0.3, height: { duration: 0 } }}
       className={cn(
         "flex gap-4 p-6 rounded-lg border backdrop-blur-sm shadow-lg",
         isUser

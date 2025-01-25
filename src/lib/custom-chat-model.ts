@@ -64,10 +64,12 @@ export class HuggingFaceChat extends BaseChatModel<HuggingFaceChatOptions> {
       .replace(/<end_of_turn>/g, "")
       .replace(/\s*<\/s>\s*/g, "")
       .replace(/<\|im_end\|>/g, "")
+      .replace(/<\|im_start\|>/g, "")
       .replace(/<\|endoftext\|>/g, "")
       .replace(/<\|end_of_text\|>/g, "")
       .replace(/<\|begin_of_text\|>/g, "")
-      .replace(/<\|begin_of_text\|>:\/\/>/g, "");
+      .replace(/<\|begin_of_text\|>:\/\/>/g, "")
+      .replace(/\<\|end\|>/g, "");
   }
 
   private _convertMessagesToPrompt(messages: BaseMessage[]): string {
@@ -95,15 +97,10 @@ export class HuggingFaceChat extends BaseChatModel<HuggingFaceChatOptions> {
 
       for await (const chunk of stream) {
         if (!chunk) continue;
-        
-        console.log("Raw model chunk (with escaped newlines):", JSON.stringify(chunk));
-        console.log("Raw content (with escaped newlines):", JSON.stringify(chunk.content));
-        
+
         // Just remove stop words and send immediately
         const rawText = this.formatText(chunk);
-        
-        console.log("After stop words removal:", JSON.stringify(rawText));
-        
+
         if (rawText) {
           const messageChunk = new AIMessageChunk({
             content: rawText,

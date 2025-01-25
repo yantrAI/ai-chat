@@ -90,8 +90,6 @@ export async function POST(req: Request) {
         let hasStartedResponse = false;
 
         try {
-          console.log("Starting stream with message:", message);
-
           // Use the streaming API
           const stream = await chain.stream({
             message,
@@ -101,9 +99,8 @@ export async function POST(req: Request) {
 
           for await (const chunk of stream) {
             hasStartedResponse = true;
-            
+
             if (chunk.content) {
-              console.log("Raw chunk content (with escaped newlines):", JSON.stringify(chunk.content));
               // Send chunk as a single SSE message
               controller.enqueue(encoder.encode(`data: ${chunk.content}`));
             }
