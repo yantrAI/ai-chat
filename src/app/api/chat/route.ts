@@ -33,6 +33,9 @@ const messageTrimmer = trimMessages({
 });
 
 export async function POST(req: Request) {
+  const controller = new AbortController();
+  const { signal } = controller;
+
   try {
     const { message, chatHistory = [], modelId = "gemma" } = await req.json();
 
@@ -41,6 +44,11 @@ export async function POST(req: Request) {
         status: 400,
       });
     }
+
+    // Handle client disconnection
+    req.signal.addEventListener("abort", () => {
+      controller.abort();
+    });
 
     // Fetch model configuration
     const modelsResponse = await fetch(new URL("/api/models", req.url));
@@ -106,11 +114,17 @@ export async function POST(req: Request) {
             {
               temperature: selectedModel.config.temperature,
               maxTokens: selectedModel.config.maxTokens,
+              signal,
             },
             undefined
           );
 
           for await (const chunk of stream) {
+            // Check if request was aborted
+            if (signal.aborted) {
+              throw new Error("Request aborted by client");
+            }
+
             const text = chunk.text;
             if (text?.trim()) {
               hasStartedResponse = true;
@@ -154,7 +168,9 @@ export async function POST(req: Request) {
 
           const errorMessage =
             error instanceof Error
-              ? `Error: ${error.message}\nStack: ${error.stack}`
+              ? error.message === "Request aborted by client"
+                ? "Generation stopped by user"
+                : `Error: ${error.message}\nStack: ${error.stack}`
               : "Unknown error occurred";
 
           console.error("Full error context:", errorMessage);

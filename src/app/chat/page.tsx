@@ -2,7 +2,13 @@
 
 import { useState, useRef, useEffect } from "react";
 import { motion } from "framer-motion";
-import { SendHorizontal, Bot, XCircle, RotateCw } from "lucide-react";
+import {
+  SendHorizontal,
+  Bot,
+  XCircle,
+  RotateCw,
+  StopCircle,
+} from "lucide-react";
 import ChatMessage from "@/components/chat-message";
 import { cn } from "@/lib/utils";
 import { useModels } from "@/context/models-context";
@@ -19,6 +25,7 @@ export default function ChatPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -28,9 +35,22 @@ export default function ChatPage() {
     scrollToBottom();
   }, [messages]);
 
+  const stopGenerating = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+      setIsLoading(false);
+    }
+  };
+
   const generateResponse = async (userMessage: string, regenerate = false) => {
+    let fullMessage = "";
+
     try {
       if (!selectedModel) return;
+
+      // Create new AbortController for this request
+      abortControllerRef.current = new AbortController();
 
       // Create a copy of current messages for chat history
       const currentMessages = [...messages];
@@ -54,6 +74,7 @@ export default function ChatPage() {
           chatHistory: currentMessages,
           modelId: selectedModel.id,
         }),
+        signal: abortControllerRef.current.signal,
       });
 
       if (!response.ok) {
@@ -68,68 +89,81 @@ export default function ChatPage() {
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
 
-      let fullMessage = "";
       let buffer = "";
       let markdownBuffer = "";
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) {
-          if (!fullMessage.trim()) {
-            throw new Error("No response received from the server");
-          }
-          break;
-        }
-
-        const text = decoder.decode(value);
-        buffer += text;
-
-        const lines = buffer.split("\n");
-        buffer = lines.pop() || "";
-
-        for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            const data = line.slice(5).trim();
-
-            if (data === "[DONE]") {
-              break;
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) {
+            if (!fullMessage.trim()) {
+              throw new Error("No response received from the server");
             }
+            break;
+          }
 
-            if (data.startsWith("Error:")) {
-              throw new Error(data.slice(7));
+          const text = decoder.decode(value);
+          buffer += text;
+
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || "";
+
+          for (const line of lines) {
+            if (line.startsWith("data: ")) {
+              const data = line.slice(5).trim();
+
+              if (data === "[DONE]") {
+                break;
+              }
+
+              if (data.startsWith("Error:")) {
+                throw new Error(data.slice(7));
+              }
+
+              markdownBuffer += data;
+
+              const processedMarkdown = markdownBuffer
+                .replace(/\* /g, "\n* ")
+                .replace(/(\d+\.) /g, "\n$1 ")
+                .replace(/```(\w+)?\n/g, "\n```$1\n")
+                .replace(/\n{3,}/g, "\n\n")
+                .trim();
+
+              fullMessage = processedMarkdown;
+
+              setMessages((prev) => {
+                const newMessages = [...prev];
+                newMessages[newMessages.length - 1] = {
+                  role: "assistant",
+                  content: fullMessage,
+                };
+                return newMessages;
+              });
             }
-
-            markdownBuffer += data;
-
-            const processedMarkdown = markdownBuffer
-              .replace(/\* /g, "\n* ")
-              .replace(/(\d+\.) /g, "\n$1 ")
-              .replace(/```(\w+)?\n/g, "\n```$1\n")
-              .replace(/\n{3,}/g, "\n\n")
-              .trim();
-
-            fullMessage = processedMarkdown;
-
-            setMessages((prev) => {
-              const newMessages = [...prev];
-              newMessages[newMessages.length - 1] = {
-                role: "assistant",
-                content: fullMessage,
-              };
-              return newMessages;
-            });
           }
         }
+      } finally {
+        reader.cancel();
       }
     } catch (error) {
       console.error("Stream Error:", error);
-      setError(
-        error instanceof Error ? error.message : "An unexpected error occurred"
-      );
-      // Remove the empty assistant message on error
-      setMessages((prev) => prev.slice(0, -1));
+      if (error instanceof Error && error.name === "AbortError") {
+        // For abort, keep the partial response if we have one
+        if (!fullMessage.trim()) {
+          setMessages((prev) => prev.slice(0, -1));
+        }
+      } else {
+        setError(
+          error instanceof Error
+            ? error.message
+            : "An unexpected error occurred"
+        );
+        // Only remove the message for non-abort errors
+        setMessages((prev) => prev.slice(0, -1));
+      }
     } finally {
       setIsLoading(false);
+      abortControllerRef.current = null;
     }
   };
 
@@ -210,7 +244,7 @@ export default function ChatPage() {
                   <RotateCw className="h-6 w-6" />
                 </motion.button>
               )}
-              {messages.length > 0 && (
+              {messages.length > 0 && !isLoading && (
                 <motion.button
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
@@ -297,22 +331,35 @@ export default function ChatPage() {
               )}
               disabled={isLoading}
             />
-            <button
-              type="submit"
-              disabled={isLoading || !input.trim()}
-              className={cn(
-                "absolute right-3 top-1/2 -translate-y-1/2",
-                "w-8 h-8 rounded-lg flex items-center justify-center",
-                "text-navy-lighter hover:text-navy-lightest transition-colors",
-                "disabled:opacity-50 disabled:cursor-not-allowed"
-              )}
-            >
-              {isLoading ? (
-                <div className="w-5 h-5 border-2 border-navy-lighter border-t-navy-lightest rounded-full animate-spin" />
-              ) : (
+            {isLoading ? (
+              <motion.button
+                onClick={(e) => {
+                  e.preventDefault();
+                  stopGenerating();
+                }}
+                className={cn(
+                  "absolute right-3 top-1/2 -translate-y-1/2",
+                  "w-8 h-8 rounded-lg flex items-center justify-center",
+                  "text-red-400 hover:text-red-300 transition-colors"
+                )}
+                title="Stop generating"
+              >
+                <StopCircle className="w-5 h-5" />
+              </motion.button>
+            ) : (
+              <button
+                type="submit"
+                disabled={!input.trim()}
+                className={cn(
+                  "absolute right-3 top-1/2 -translate-y-1/2",
+                  "w-8 h-8 rounded-lg flex items-center justify-center",
+                  "text-navy-lighter hover:text-navy-lightest transition-colors",
+                  "disabled:opacity-50 disabled:cursor-not-allowed"
+                )}
+              >
                 <SendHorizontal className="w-5 h-5" />
-              )}
-            </button>
+              </button>
+            )}
           </form>
         </div>
       </div>
