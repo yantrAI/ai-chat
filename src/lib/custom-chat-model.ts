@@ -12,14 +12,13 @@ import {
 import { ChatResult, ChatGenerationChunk } from "@langchain/core/outputs";
 import { HuggingFaceInference } from "@langchain/community/llms/hf";
 
-interface HuggingFaceChatOptions extends BaseChatModelCallOptions {
-  maxTokens?: number;
-  temperature?: number;
+export interface HuggingFaceChatOptions extends BaseChatModelCallOptions {
+  stop?: string[];
 }
 
-interface HuggingFaceChatParams extends BaseChatModelParams {
-  apiKey: string;
+export interface HuggingFaceChatParams extends BaseChatModelParams {
   model: string;
+  apiKey: string;
   temperature?: number;
   maxTokens?: number;
 }
@@ -27,6 +26,7 @@ interface HuggingFaceChatParams extends BaseChatModelParams {
 export class HuggingFaceChat extends BaseChatModel<HuggingFaceChatOptions> {
   private client: HuggingFaceInference;
   private model: string;
+  private apiKey: string;
   private temperature: number;
   private maxTokens: number;
 
@@ -40,18 +40,20 @@ export class HuggingFaceChat extends BaseChatModel<HuggingFaceChatOptions> {
       model: fields.model,
       apiKey: fields.apiKey,
       temperature: fields.temperature ?? 0.7,
-      maxTokens: fields.maxTokens ?? 500,
+      maxTokens: fields.maxTokens ?? 1024,
     });
     this.model = fields.model;
+    this.apiKey = fields.apiKey;
     this.temperature = fields.temperature ?? 0.7;
-    this.maxTokens = fields.maxTokens ?? 500;
+    this.maxTokens = fields.maxTokens ?? 1024;
   }
 
-  invocationParams() {
+  invocationParams(options?: this["ParsedCallOptions"]) {
     return {
       model: this.model,
       temperature: this.temperature,
       maxTokens: this.maxTokens,
+      stop: options?.stop,
     };
   }
 
@@ -158,31 +160,60 @@ Response:`;
     options: this["ParsedCallOptions"],
     runManager?: CallbackManagerForLLMRun
   ): Promise<ChatResult> {
-    try {
-      await runManager?.handleText("Generating response...");
+    const params = this.invocationParams(options);
+    const messageStrings = messages.map((message) => {
+      if (typeof message.content !== "string") {
+        throw new Error("Multimodal messages are not supported");
+      }
+      return `${message._getType()}: ${message.content}`;
+    });
 
-      const prompt = this._convertMessagesToPrompt(messages);
-      const response = await this.client.invoke(prompt, {
-        ...options,
-      });
+    const response = await fetch(
+      "https://api-inference.huggingface.co/models/" + this.model,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${this.apiKey}`,
+        },
+        body: JSON.stringify({
+          inputs: messageStrings.join("\n"),
+          parameters: {
+            temperature: params.temperature,
+            max_new_tokens: params.maxTokens,
+            return_full_text: false,
+            stop: params.stop,
+          },
+        }),
+      }
+    );
 
-      const content = this.formatText(response);
-      await runManager?.handleText(content);
-
-      const tokenUsage = {
-        completionTokens: content.split(" ").length,
-        promptTokens: prompt.split(" ").length,
-        totalTokens: content.split(" ").length + prompt.split(" ").length,
-      };
-
-      return {
-        generations: [{ message: new AIMessage({ content }), text: content }],
-        llmOutput: { tokenUsage },
-      };
-    } catch (error) {
-      console.error("Error in HuggingFaceChat:", error);
-      throw error;
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
     }
+
+    const result = await response.json();
+    const content = result[0]?.generated_text ?? "";
+
+    await runManager?.handleLLMNewToken(content);
+
+    return {
+      generations: [
+        {
+          message: new AIMessage({ content }),
+          text: content,
+        },
+      ],
+      llmOutput: {
+        tokenUsage: {
+          completionTokens: content.split(" ").length,
+          promptTokens: messageStrings.join(" ").split(" ").length,
+          totalTokens:
+            content.split(" ").length +
+            messageStrings.join(" ").split(" ").length,
+        },
+      },
+    };
   }
 
   _llmType(): string {

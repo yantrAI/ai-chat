@@ -1,10 +1,5 @@
-import {
-  AIMessage,
-  HumanMessage,
-  SystemMessage,
-  trimMessages,
-} from "@langchain/core/messages";
 import { HuggingFaceChat } from "@/lib/custom-chat-model";
+import { ChatPromptTemplate } from "@langchain/core/prompts";
 
 if (!process.env.HUGGINGFACE_API_KEY) {
   throw new Error("Missing HUGGINGFACE_API_KEY environment variable");
@@ -24,20 +19,19 @@ type ModelConfig = {
   };
 };
 
-// Create a message trimmer to prevent context overflow
-const messageTrimmer = trimMessages({
-  maxTokens: 2000,
-  strategy: "last",
-  tokenCounter: (msgs) =>
-    msgs.reduce((acc, msg) => acc + msg.content.length, 0),
-});
+// Create a chat prompt template following the exact format from the issue
+const prompt = ChatPromptTemplate.fromMessages([
+  ["system", ""], // Empty system prompt as suggested
+  ["human", "<|user|> {message}<|end|>"],
+  ["assistant", "<|assistant|>"], // No %2 needed as we're not using template variables for response
+]);
 
 export async function POST(req: Request) {
   const controller = new AbortController();
   const { signal } = controller;
 
   try {
-    const { message, chatHistory = [], modelId = "gemma" } = await req.json();
+    const { message, modelId = "gemma" } = await req.json();
 
     if (!message) {
       return new Response(JSON.stringify({ error: "Message is required" }), {
@@ -68,35 +62,11 @@ export async function POST(req: Request) {
       model: selectedModel.config.model,
       apiKey: process.env.HUGGINGFACE_API_KEY!,
       temperature: selectedModel.config.temperature,
-      maxTokens: selectedModel.config.maxTokens,
+      maxTokens: Math.min(selectedModel.config.maxTokens, 4096), // Limit tokens as per issue discussion
     });
 
-    // Convert chat history to message objects
-    const history = chatHistory.map((msg: { role: string; content: string }) =>
-      msg.role === "user"
-        ? new HumanMessage(msg.content)
-        : new AIMessage(msg.content)
-    );
-
-    // Add system message at the start
-    const messages = [
-      new SystemMessage(
-        `You are ${selectedModel.name}, a helpful and knowledgeable AI assistant. Follow these rules:
-1. Give direct, clear answers
-2. Be concise and to the point
-3. Don't add unnecessary pleasantries or questions
-4. For math or coding, just show the solution
-5. Don't mention that you're an AI or language model
-6. Don't ask if there's anything else you can help with
-7. Don't use emojis or special characters
-8. Format your responses in markdown when appropriate`
-      ),
-      ...history,
-      new HumanMessage(message),
-    ];
-
-    // Trim messages to prevent context overflow
-    const trimmedMessages = await messageTrimmer.invoke(messages);
+    // Create the chain by piping the prompt to the model
+    const chain = prompt.pipe(model);
 
     // Set up streaming with proper encoding
     const encoder = new TextEncoder();
@@ -104,52 +74,45 @@ export async function POST(req: Request) {
       async start(controller) {
         let hasStartedResponse = false;
         try {
-          console.log(
-            "Starting stream with messages:",
-            JSON.stringify(trimmedMessages, null, 2)
-          );
+          console.log("Starting stream with message:", message);
 
-          const stream = await model._streamResponseChunks(
-            trimmedMessages,
-            {
-              temperature: selectedModel.config.temperature,
-              maxTokens: selectedModel.config.maxTokens,
-              signal,
-            },
-            undefined
-          );
+          const response = await chain.invoke({
+            message,
+            signal,
+            stop: ["<|end|>", "<|user|>", "<|assistant|>", "</s>"], // Stop tokens from the issue
+          });
 
-          for await (const chunk of stream) {
-            // Check if request was aborted
-            if (signal.aborted) {
-              throw new Error("Request aborted by client");
-            }
+          // Process the response
+          if (response) {
+            hasStartedResponse = true;
+            const content =
+              typeof response.content === "string"
+                ? response.content
+                : Array.isArray(response.content)
+                ? response.content
+                    .map((c) => (typeof c === "string" ? c : ""))
+                    .join(" ")
+                : "";
 
-            const text = chunk.text;
-            if (text?.trim()) {
-              hasStartedResponse = true;
-              // Format the text to ensure proper newlines and clean up model-specific tokens
-              const formattedText = text
-                .replace(/(\d+\.)/g, "\n$1") // Add newline before numbered lists
-                .replace(/\n+/g, "\n") // Normalize multiple newlines
-                .replace(/<\/s>/g, "") // Remove Mistral's end tokens
-                .replace(/\s*<\/s>\s*/g, "") // Remove Mistral's end tokens with surrounding whitespace
-                .trim();
+            const formattedText = content
+              .replace(/(\d+\.)/g, "\n$1")
+              .replace(/\n+/g, "\n")
+              .replace(/<\|end\|>/g, "")
+              .replace(/<\|user\|>/g, "")
+              .replace(/<\|assistant\|>/g, "")
+              .replace(/<\/s>/g, "")
+              .replace(/\s*<\/s>\s*/g, "")
+              .replace(/\s+/g, " ")
+              .trim();
 
-              if (formattedText) {
-                const encodedChunk = encoder.encode(
-                  `data: ${formattedText}\n\n`
-                );
-                controller.enqueue(encodedChunk);
-              }
-            } else {
-              console.log("Received empty chunk from model");
+            if (formattedText) {
+              const encodedChunk = encoder.encode(`data: ${formattedText}\n\n`);
+              controller.enqueue(encodedChunk);
             }
           }
 
           if (!hasStartedResponse) {
             console.error("No response was generated from the model");
-            // If no response was generated, send an error
             const errorChunk = encoder.encode(
               `data: Error: Model did not generate any response. Please try again.\n\n`
             );
