@@ -102,37 +102,48 @@ export default function ChatPage() {
             break;
           }
 
-          const text = decoder.decode(value);
-          buffer += text;
+          buffer += decoder.decode(value);
 
-          const lines = buffer.split("\n");
-          buffer = lines.pop() || "";
+          // Process all complete SSE messages in the buffer
+          while (buffer.includes("data: ")) {
+            const messageStart = buffer.indexOf("data: ");
+            const messageEnd = buffer.indexOf("data: ", messageStart + 1);
 
-          for (const line of lines) {
-            if (line.startsWith("data:")) {
-              const data = line.slice(5); // Remove "data:" prefix
-
-              if (data === "[DONE]") {
-                break;
-              }
-
-              if (data.startsWith("Error:")) {
-                throw new Error(data.slice(7));
-              }
-
-              // Append data without adding extra spaces
-              markdownBuffer += data;
-              fullMessage = markdownBuffer;
-
-              setMessages((prev) => {
-                const newMessages = [...prev];
-                newMessages[newMessages.length - 1] = {
-                  role: "assistant",
-                  content: fullMessage,
-                };
-                return newMessages;
-              });
+            // Extract the message content
+            let data;
+            if (messageEnd === -1) {
+              // Last or only message in buffer
+              data = buffer.slice(messageStart + 6);
+              buffer = "";
+            } else {
+              // More messages follow
+              data = buffer.slice(messageStart + 6, messageEnd);
+              buffer = buffer.slice(messageEnd);
             }
+
+            // Handle the message
+            if (data === "[DONE]") {
+              break;
+            }
+
+            if (data.startsWith("Error:")) {
+              throw new Error(data.slice(7));
+            }
+
+            console.log("Received data (with escaped newlines):", JSON.stringify(data));
+
+            // Append raw data without any processing
+            markdownBuffer += data;
+            fullMessage = markdownBuffer;
+
+            setMessages((prev) => {
+              const newMessages = [...prev];
+              newMessages[newMessages.length - 1] = {
+                role: "assistant",
+                content: fullMessage,
+              };
+              return newMessages;
+            });
           }
         }
       } finally {

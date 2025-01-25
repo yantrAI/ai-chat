@@ -78,14 +78,8 @@ export class HuggingFaceChat extends BaseChatModel<HuggingFaceChatOptions> {
       .filter((m) => m._getType() !== "system")
       .map((m) => m.content);
 
-    return `${systemMessage?.content || ""}
-
-Previous conversation:
-${recentHistory}
-
-Current question: ${userMessage.content}
-
-Response:`;
+    // Join messages without adding extra newlines
+    return `${systemMessage?.content || ""}Previous conversation:${recentHistory.join("")}Current question:${userMessage.content}Response:`;
   }
 
   async *_streamResponseChunks(
@@ -102,8 +96,13 @@ Response:`;
       for await (const chunk of stream) {
         if (!chunk) continue;
         
+        console.log("Raw model chunk (with escaped newlines):", JSON.stringify(chunk));
+        console.log("Raw content (with escaped newlines):", JSON.stringify(chunk.content));
+        
         // Just remove stop words and send immediately
         const rawText = this.formatText(chunk);
+        
+        console.log("After stop words removal:", JSON.stringify(rawText));
         
         if (rawText) {
           const messageChunk = new AIMessageChunk({
@@ -146,7 +145,7 @@ Response:`;
           Authorization: `Bearer ${this.apiKey}`,
         },
         body: JSON.stringify({
-          inputs: messageStrings.join("\n"),
+          inputs: messageStrings.join(""),
           parameters: {
             temperature: params.temperature,
             max_new_tokens: params.maxTokens,
@@ -176,10 +175,10 @@ Response:`;
       llmOutput: {
         tokenUsage: {
           completionTokens: content.split(" ").length,
-          promptTokens: messageStrings.join(" ").split(" ").length,
+          promptTokens: messageStrings.join("").split(" ").length,
           totalTokens:
             content.split(" ").length +
-            messageStrings.join(" ").split(" ").length,
+            messageStrings.join("").split(" ").length,
         },
       },
     };

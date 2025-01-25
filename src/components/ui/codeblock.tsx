@@ -34,23 +34,10 @@ export const CodeBlock = ({
     }
   };
 
-  // Format the value when it changes
+  // Keep the value exactly as is, no splitting or joining
   useEffect(() => {
-    // Split into lines, filter empty lines at the end during streaming
-    const lines = value.split('\n');
-    const nonEmptyLines = isStreaming 
-      ? lines.filter((line, index) => {
-          if (index === lines.length - 1) return true; // Keep last line during streaming
-          return line.trim() !== '';
-        })
-      : lines;
-    
-    // Join lines back together
-    const formatted = nonEmptyLines.join('\n');
-    
-    // Ensure there's always a newline at the end for proper formatting
-    setFormattedValue(formatted + (formatted.endsWith('\n') ? '' : '\n'));
-  }, [value, isStreaming]);
+    setFormattedValue(value);
+  }, [value]);
 
   return (
     <div className={cn("relative font-mono text-sm", className)}>

@@ -103,22 +103,22 @@ export async function POST(req: Request) {
             hasStartedResponse = true;
             
             if (chunk.content) {
-              console.log("Raw chunk content:", chunk.content);
-              // Send chunk without adding any extra spaces
-              controller.enqueue(encoder.encode(`data:${chunk.content}\n\n`));
+              console.log("Raw chunk content (with escaped newlines):", JSON.stringify(chunk.content));
+              // Send chunk as a single SSE message
+              controller.enqueue(encoder.encode(`data: ${chunk.content}`));
             }
           }
 
           if (!hasStartedResponse) {
             console.error("No response was generated from the model");
             const errorChunk = encoder.encode(
-              `data:Error: Model did not generate any response. Please try again.\n\n`
+              `data: Error: Model did not generate any response. Please try again.`
             );
             controller.enqueue(errorChunk);
           }
 
           // Send end of stream
-          controller.enqueue(encoder.encode("data:[DONE]\n\n"));
+          controller.enqueue(encoder.encode(`data: [DONE]`));
           controller.close();
         } catch (error) {
           console.error("Streaming error details:", {
@@ -136,9 +136,9 @@ export async function POST(req: Request) {
 
           console.error("Full error context:", errorMessage);
 
-          const errorChunk = encoder.encode(`data:Error: ${errorMessage}\n\n`);
+          const errorChunk = encoder.encode(`data: Error: ${errorMessage}`);
           controller.enqueue(errorChunk);
-          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+          controller.enqueue(encoder.encode(`data: [DONE]`));
           controller.close();
         }
       },

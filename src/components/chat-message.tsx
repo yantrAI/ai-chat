@@ -54,16 +54,16 @@ const components: Components = {
     );
   },
   ul: ({ children }) => (
-    <ul className="list-disc pl-6 mb-4 space-y-2 marker:text-navy-lighter">
+    <ul className="list-disc pl-6 marker:text-navy-lighter">
       {children}
     </ul>
   ),
   ol: ({ children }) => (
-    <ol className="list-decimal pl-6 mb-4 space-y-2 marker:text-navy-lighter">
+    <ol className="list-decimal pl-6 marker:text-navy-lighter">
       {children}
     </ol>
   ),
-  li: ({ children }) => <li className="leading-relaxed">{children}</li>,
+  li: ({ children }) => <li className="leading-relaxed mb-1">{children}</li>,
   a: ({ children, href }) => (
     <a
       href={href}
@@ -164,15 +164,17 @@ const ChatMessage = ({ role, content }: ChatMessageProps) => {
           let currentContent = content;
 
           if (!codeBlockState.inBlock) {
-            const codeBlockStart = currentContent.indexOf('```');
-            
+            const codeBlockStart = currentContent.indexOf("```");
+
             if (codeBlockStart !== -1) {
               const beforeCode = currentContent.slice(0, codeBlockStart);
               const afterStartMarker = currentContent.slice(codeBlockStart + 3);
               const languageMatch = afterStartMarker.match(/^(\w+)?\n/);
-              const language = languageMatch ? languageMatch[1] || 'text' : 'text';
-              
-              const codeContent = languageMatch 
+              const language = languageMatch
+                ? languageMatch[1] || "text"
+                : "text";
+
+              const codeContent = languageMatch
                 ? afterStartMarker.slice(languageMatch[0].length)
                 : afterStartMarker;
 
@@ -183,7 +185,9 @@ const ChatMessage = ({ role, content }: ChatMessageProps) => {
               });
 
               setFormattedParts([
-                ...(beforeCode ? [{ type: "text" as const, content: beforeCode }] : []),
+                ...(beforeCode
+                  ? [{ type: "text" as const, content: beforeCode }]
+                  : []),
                 {
                   type: "code" as const,
                   content: codeContent,
@@ -196,21 +200,26 @@ const ChatMessage = ({ role, content }: ChatMessageProps) => {
               setFormattedParts([{ type: "text", content: currentContent }]);
             }
           } else {
-            const codeEndIndex = currentContent.lastIndexOf('```');
-            const codeStartIndex = currentContent.indexOf('```');
-            const hasCompleteBlock = codeEndIndex !== -1 && codeEndIndex > codeStartIndex + 3;
+            const codeStartIndex = currentContent.indexOf("```");
+            const codeEndIndex = currentContent.indexOf("```", codeStartIndex + 3);
+            const hasCompleteBlock = codeEndIndex !== -1;
 
             if (hasCompleteBlock) {
               const fullContent = currentContent.substring(0, codeEndIndex);
               const afterCode = currentContent.substring(codeEndIndex + 3);
 
               const codeContent = fullContent
-                .slice(fullContent.indexOf('```') + 3)
-                .replace(/^(\w+)?\n/, '');
+                .slice(fullContent.indexOf("```") + 3)
+                .replace(/^(\w+)?\n/, "");
 
               const parts = [
                 ...(codeBlockState.textBeforeCode
-                  ? [{ type: "text" as const, content: codeBlockState.textBeforeCode }]
+                  ? [
+                      {
+                        type: "text" as const,
+                        content: codeBlockState.textBeforeCode,
+                      },
+                    ]
                   : []),
                 {
                   type: "code" as const,
@@ -218,7 +227,9 @@ const ChatMessage = ({ role, content }: ChatMessageProps) => {
                   language: codeBlockState.language,
                   isStreaming: false,
                 },
-                ...(afterCode ? [{ type: "text" as const, content: afterCode }] : []),
+                ...(afterCode
+                  ? [{ type: "text" as const, content: afterCode }]
+                  : []),
               ];
 
               setFormattedParts(parts);
@@ -230,12 +241,17 @@ const ChatMessage = ({ role, content }: ChatMessageProps) => {
               setExited(true);
             } else {
               const codeContent = currentContent
-                .slice(currentContent.indexOf('```') + 3)
-                .replace(/^(\w+)?\n/, '');
+                .slice(currentContent.indexOf("```") + 3)
+                .replace(/^(\w+)?\n/, "");
 
               setFormattedParts([
                 ...(codeBlockState.textBeforeCode
-                  ? [{ type: "text" as const, content: codeBlockState.textBeforeCode }]
+                  ? [
+                      {
+                        type: "text" as const,
+                        content: codeBlockState.textBeforeCode,
+                      },
+                    ]
                   : []),
                 {
                   type: "code" as const,
@@ -303,7 +319,7 @@ const ChatMessage = ({ role, content }: ChatMessageProps) => {
         <div
           className={cn(
             "prose prose-sm max-w-none prose-invert",
-            "whitespace-pre-wrap break-words"
+            "break-words"
           )}
         >
           {isUser ? (
@@ -318,10 +334,10 @@ const ChatMessage = ({ role, content }: ChatMessageProps) => {
                     <MemoizedReactMarkdown
                       key={index}
                       remarkPlugins={[remarkGfm]}
-                      className="text-sm text-navy-lightest whitespace-pre-wrap"
+                      className="text-sm text-navy-lightest"
                       components={components}
                     >
-                      {part.content}
+                      {part.content.trim()}
                     </MemoizedReactMarkdown>
                   ) : null
                 ) : (
