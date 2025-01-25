@@ -48,7 +48,7 @@ const ChatMessage = ({ role, content }: ChatMessageProps) => {
             <p className="text-sm leading-relaxed text-navy-lightest">
               {content}
             </p>
-          ) : (
+          ) : content ? (
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               className="text-sm text-navy-lightest space-y-4 whitespace-pre-wrap break-words"
@@ -96,6 +96,24 @@ const ChatMessage = ({ role, content }: ChatMessageProps) => {
             >
               {content}
             </ReactMarkdown>
+          ) : (
+            <div className="flex items-center gap-2 h-6">
+              <motion.span
+                className="w-2 h-2 bg-navy-lighter rounded-full"
+                animate={{ scale: [1, 1.2, 1] }}
+                transition={{ duration: 1, repeat: Infinity }}
+              />
+              <motion.span
+                className="w-2 h-2 bg-navy-lighter rounded-full"
+                animate={{ scale: [1, 1.2, 1] }}
+                transition={{ duration: 1, repeat: Infinity, delay: 0.2 }}
+              />
+              <motion.span
+                className="w-2 h-2 bg-navy-lighter rounded-full"
+                animate={{ scale: [1, 1.2, 1] }}
+                transition={{ duration: 1, repeat: Infinity, delay: 0.4 }}
+              />
+            </div>
           )}
         </div>
       </div>

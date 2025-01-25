@@ -10,12 +10,19 @@ if (!process.env.HUGGINGFACE_API_KEY) {
   throw new Error("Missing HUGGINGFACE_API_KEY environment variable");
 }
 
-const model = new HuggingFaceChat({
-  model: "google/gemma-2b-it",
-  apiKey: process.env.HUGGINGFACE_API_KEY,
-  temperature: 0.7,
-  maxTokens: 500,
-});
+type ModelConfig = {
+  id: string;
+  name: string;
+  description: string;
+  features: string[];
+  active: boolean;
+  comingSoon?: boolean;
+  config: {
+    model: string;
+    temperature: number;
+    maxTokens: number;
+  };
+};
 
 // Create a message trimmer to prevent context overflow
 const messageTrimmer = trimMessages({
@@ -27,13 +34,34 @@ const messageTrimmer = trimMessages({
 
 export async function POST(req: Request) {
   try {
-    const { message, chatHistory = [] } = await req.json();
+    const { message, chatHistory = [], modelId = "gemma" } = await req.json();
 
     if (!message) {
       return new Response(JSON.stringify({ error: "Message is required" }), {
         status: 400,
       });
     }
+
+    // Fetch model configuration
+    const modelsResponse = await fetch(new URL("/api/models", req.url));
+    const models = await modelsResponse.json();
+    const selectedModel = models.find(
+      (m: ModelConfig) => m.id === modelId && m.active
+    );
+
+    if (!selectedModel || !selectedModel.config) {
+      return new Response(
+        JSON.stringify({ error: "Selected model not found or not active" }),
+        { status: 400 }
+      );
+    }
+
+    const model = new HuggingFaceChat({
+      model: selectedModel.config.model,
+      apiKey: process.env.HUGGINGFACE_API_KEY!,
+      temperature: selectedModel.config.temperature,
+      maxTokens: selectedModel.config.maxTokens,
+    });
 
     // Convert chat history to message objects
     const history = chatHistory.map((msg: { role: string; content: string }) =>
@@ -45,7 +73,7 @@ export async function POST(req: Request) {
     // Add system message at the start
     const messages = [
       new SystemMessage(
-        `You are Gemma, a helpful and knowledgeable AI assistant. Follow these rules:
+        `You are ${selectedModel.name}, a helpful and knowledgeable AI assistant. Follow these rules:
 1. Give direct, clear answers
 2. Be concise and to the point
 3. Don't add unnecessary pleasantries or questions
@@ -76,8 +104,8 @@ export async function POST(req: Request) {
           const stream = await model._streamResponseChunks(
             trimmedMessages,
             {
-              temperature: 0.7,
-              maxTokens: 500,
+              temperature: selectedModel.config.temperature,
+              maxTokens: selectedModel.config.maxTokens,
             },
             undefined
           );
@@ -86,13 +114,20 @@ export async function POST(req: Request) {
             const text = chunk.text;
             if (text?.trim()) {
               hasStartedResponse = true;
-              // Format the text to ensure proper newlines
+              // Format the text to ensure proper newlines and clean up model-specific tokens
               const formattedText = text
                 .replace(/(\d+\.)/g, "\n$1") // Add newline before numbered lists
                 .replace(/\n+/g, "\n") // Normalize multiple newlines
+                .replace(/<\/s>/g, "") // Remove Mistral's end tokens
+                .replace(/\s*<\/s>\s*/g, "") // Remove Mistral's end tokens with surrounding whitespace
                 .trim();
-              const encodedChunk = encoder.encode(`data: ${formattedText}\n\n`);
-              controller.enqueue(encodedChunk);
+
+              if (formattedText) {
+                const encodedChunk = encoder.encode(
+                  `data: ${formattedText}\n\n`
+                );
+                controller.enqueue(encodedChunk);
+              }
             } else {
               console.log("Received empty chunk from model");
             }
