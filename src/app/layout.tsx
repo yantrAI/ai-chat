@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { ModelsProvider } from "@/context/models-context";
+import { AgentConfigProvider } from "@/context/agent-config-context";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -25,7 +26,9 @@ export default function RootLayout({
           before:opacity-30
           before:-z-10`}
       >
-        <ModelsProvider>{children}</ModelsProvider>
+        <ModelsProvider>
+          <AgentConfigProvider>{children}</AgentConfigProvider>
+        </ModelsProvider>
       </body>
     </html>
   );

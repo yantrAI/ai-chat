@@ -12,6 +12,7 @@ import {
 import ChatMessage from "@/components/chat-message";
 import { cn } from "@/lib/utils";
 import { useModels } from "@/context/models-context";
+import { useAgentConfig } from "@/context/agent-config-context";
 
 type Message = {
   role: "user" | "assistant";
@@ -20,6 +21,7 @@ type Message = {
 
 export default function ChatPage() {
   const { selectedModel } = useModels();
+  const { config: agentConfig } = useAgentConfig();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -84,6 +86,7 @@ export default function ChatPage() {
           message: userMessage,
           chatHistory: currentMessages,
           modelId: selectedModel.id,
+          agentConfig,
         }),
         signal: abortControllerRef.current.signal,
       });
@@ -238,6 +241,7 @@ export default function ChatPage() {
             <div>
               <h1 className="text-2xl font-bold text-navy-lightest">
                 Chat with {selectedModel.name}
+                {agentConfig?.name && ` as ${agentConfig.name}`}
               </h1>
               <p className="text-sm text-navy-lighter">
                 {selectedModel.description}

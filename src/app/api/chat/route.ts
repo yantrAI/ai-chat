@@ -1,5 +1,4 @@
 import { HuggingFaceChat } from "@/lib/custom-chat-model";
-import { ChatPromptTemplate } from "@langchain/core/prompts";
 
 if (!process.env.HUGGINGFACE_API_KEY) {
   throw new Error("Missing HUGGINGFACE_API_KEY environment variable");
@@ -27,10 +26,14 @@ type ModelConfig = {
 
 export async function POST(req: Request) {
   const controller = new AbortController();
-  const { signal } = controller;
 
   try {
-    const { message, chatHistory = [], modelId = "gemma" } = await req.json();
+    const {
+      message,
+      chatHistory = [],
+      modelId = "gemma",
+      agentConfig = null,
+    } = await req.json();
 
     if (!message) {
       return new Response(JSON.stringify({ error: "Message is required" }), {
@@ -67,6 +70,26 @@ export async function POST(req: Request) {
 
     // Create a model-specific prompt template
     let prompt = "";
+
+    // Add agent configuration if available
+    if (agentConfig) {
+      prompt += "# WHOLE CONTEXT (ALWAYS VALID)\n";
+      if (agentConfig.name) {
+        prompt += `AGENT IDENTITY: ${agentConfig.name}\n`;
+      }
+      if (agentConfig.instructions) {
+        prompt += "CORE OPERATING PRINCIPLES:\n";
+        prompt += `${agentConfig.instructions}\n\n`;
+      }
+      if (agentConfig.rules) {
+        prompt += "IMMUTABLE CONSTRAINTS:\n";
+        prompt += `${agentConfig.rules}\n\n`;
+      }
+      prompt += "CONTEXTUAL AWARENESS DIRECTIVES:\n";
+      prompt += "- Integrate these directives naturally into responses\n";
+      prompt += "- Maintain consistent operational parameters\n";
+      prompt += "- Apply constraints without explicit acknowledgment\n";
+    }
 
     // Add system message if exists
     if (selectedModel.config.promptTemplate?.system) {
