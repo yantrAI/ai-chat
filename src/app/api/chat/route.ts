@@ -30,7 +30,7 @@ export async function POST(req: Request) {
   const { signal } = controller;
 
   try {
-    const { message, modelId = "gemma" } = await req.json();
+    const { message, chatHistory = [], modelId = "gemma" } = await req.json();
 
     if (!message) {
       return new Response(JSON.stringify({ error: "Message is required" }), {
@@ -65,23 +65,27 @@ export async function POST(req: Request) {
     });
 
     // Create a model-specific prompt template
-    const messages: [string, string][] = [];
+    let prompt = "";
+
+    // Add system message if exists
     if (selectedModel.config.promptTemplate?.system) {
-      messages.push(["system", selectedModel.config.promptTemplate.system]);
-    }
-    messages.push([
-      "human",
-      selectedModel.config.promptTemplate?.human || "{message}",
-    ]);
-    if (selectedModel.config.promptTemplate?.assistant) {
-      messages.push([
-        "assistant",
-        selectedModel.config.promptTemplate.assistant,
-      ]);
+      prompt += selectedModel.config.promptTemplate.system + "\n";
     }
 
-    const prompt = ChatPromptTemplate.fromMessages(messages);
-    const chain = prompt.pipe(model);
+    // Add chat history
+    if (chatHistory?.length > 0) {
+      prompt += "Previous conversation:\n";
+      for (const msg of chatHistory) {
+        prompt += `${msg.role === "human" ? "Human" : "Assistant"}: ${msg.content}\n`;
+      }
+    }
+
+    // Add current message with model-specific formatting
+    const userPrompt = selectedModel.config.promptTemplate?.human
+      ? selectedModel.config.promptTemplate.human.replace("{message}", message)
+      : message;
+
+    prompt += userPrompt;
 
     // Set up streaming with proper encoding
     const encoder = new TextEncoder();
@@ -90,10 +94,8 @@ export async function POST(req: Request) {
         let hasStartedResponse = false;
 
         try {
-          // Use the streaming API
-          const stream = await chain.stream({
-            message,
-            signal,
+          // Use the streaming API directly with the model
+          const stream = await model.stream(prompt, {
             stop: selectedModel.config.stopTokens || ["</s>"],
           });
 

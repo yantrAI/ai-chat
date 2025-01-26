@@ -1,6 +1,6 @@
 This is a portfolio website for Mithun U.
 Before creating/adding something new, check if something similar already exists
-Api calls should be in redux files only, no direct api calls allowed in components
+Api calls should be in context files only, no direct api calls allowed in components
 dont use dummy data, use real data until specified otherwise
 Use gsap for animations
 

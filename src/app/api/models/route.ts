@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 interface ModelConfig {
   model: string;
   temperature: number;
-  maxTokens: number;
+  maxTokens?: number;
   stopTokens?: string[];
   promptTemplate?: {
     system?: string;
@@ -36,7 +36,6 @@ const models: Model[] = [
     config: {
       model: "google/gemma-2b-it",
       temperature: 0.7,
-      maxTokens: 500,
       stopTokens: ["<end_of_turn>", "</s>"],
       promptTemplate: {
         human: "<start_of_turn>user\n{message}<end_of_turn>\nassistant\n",
@@ -55,7 +54,6 @@ const models: Model[] = [
     config: {
       model: "mistralai/Mistral-Nemo-Instruct-2407",
       temperature: 0.7,
-      maxTokens: 500,
       stopTokens: ["[/INST]", "</s>"],
       promptTemplate: {
         human: "<s>[INST] {message} [/INST]",
@@ -78,7 +76,6 @@ const models: Model[] = [
     config: {
       model: "mistralai/Mistral-7B-Instruct-v0.3",
       temperature: 0.7,
-      maxTokens: 500,
       stopTokens: ["[/INST]", "</s>"],
       promptTemplate: {
         human: "<s>[INST] {message} [/INST]",
@@ -100,7 +97,6 @@ const models: Model[] = [
     config: {
       model: "Qwen/Qwen2-VL-7B-Instruct",
       temperature: 0.7,
-      maxTokens: 500,
       stopTokens: ["<|im_end|>", "</s>"],
       promptTemplate: {
         human: "<|im_start|>user\n{message}<|im_end|>\n<|im_start|>assistant\n",
@@ -122,7 +118,6 @@ const models: Model[] = [
     config: {
       model: "Qwen/QwQ-32B-Preview",
       temperature: 0.7,
-      maxTokens: 500,
       stopTokens: ["<|im_end|>", "</s>"],
       promptTemplate: {
         human: "<|im_start|>user\n{message}<|im_end|>\n<|im_start|>assistant\n",
@@ -141,7 +136,6 @@ const models: Model[] = [
     config: {
       model: "Qwen/Qwen2.5-Coder-32B-Instruct",
       temperature: 0.7,
-      maxTokens: 500,
       stopTokens: ["<|im_end|>", "</s>"],
       promptTemplate: {
         human: "<|im_start|>user\n{message}<|im_end|>\n<|im_start|>assistant\n",
@@ -159,7 +153,6 @@ const models: Model[] = [
     config: {
       model: "microsoft/Phi-3.5-mini-instruct",
       temperature: 0.7,
-      maxTokens: 500,
       stopTokens: ["<|end|>", "<|user|>", "<|assistant|>", "</s>"],
       promptTemplate: {
         human: "<|user|>{message}<|end|>\n<|assistant|>",
@@ -181,7 +174,6 @@ const models: Model[] = [
     config: {
       model: "NousResearch/Hermes-3-Llama-3.1-8B",
       temperature: 0.7,
-      maxTokens: 500,
       stopTokens: ["<|im_end|>", "</s>"],
       promptTemplate: {
         system:

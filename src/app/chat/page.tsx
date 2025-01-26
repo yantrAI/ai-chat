@@ -55,16 +55,19 @@ export default function ChatPage() {
       // Create a copy of current messages for chat history
       const currentMessages = [...messages];
 
-      // For regeneration, only remove if last message is from assistant
-      if (
-        regenerate &&
-        currentMessages[currentMessages.length - 1]?.role === "assistant"
-      ) {
-        setMessages((prev) => prev.slice(0, -1));
+      // For regeneration, remove the last assistant message
+      if (regenerate && currentMessages.length > 0) {
+        const lastMessage = currentMessages[currentMessages.length - 1];
+        if (lastMessage.role === "assistant") {
+          currentMessages.pop();
+        }
+      } else {
+        // Add user message to history for new messages
+        currentMessages.push({ role: "user", content: userMessage });
       }
 
       // Add empty assistant message for streaming
-      setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
+      setMessages([...currentMessages, { role: "assistant", content: "" }]);
 
       const response = await fetch("/api/chat", {
         method: "POST",
@@ -129,7 +132,6 @@ export default function ChatPage() {
             if (data.startsWith("Error:")) {
               throw new Error(data.slice(7));
             }
-
 
             // Append raw data without any processing
             markdownBuffer += data;
