@@ -78,8 +78,8 @@ export default function Sidebar() {
                   model === selectedModel
                     ? "bg-navy-light/50 border-navy-lighter"
                     : model.active
-                    ? "bg-navy/50 border-navy-light hover:border-navy-lighter"
-                    : "bg-navy/50 border-navy-light opacity-50",
+                      ? "bg-navy/50 border-navy-light hover:border-navy-lighter"
+                      : "bg-navy/50 border-navy-light opacity-50",
                   model.comingSoon && "cursor-not-allowed"
                 )}
               >
@@ -87,9 +87,18 @@ export default function Sidebar() {
                   <h3 className="font-medium text-navy-lightest whitespace-nowrap">
                     {model.name}
                     {model === selectedModel && (
-                      <span className="ml-2 text-xs text-navy-lighter">
-                        (Selected)
-                      </span>
+                      <motion.div
+                        initial={{ scale: 0.8 }}
+                        animate={{ scale: 1 }}
+                        transition={{
+                          repeat: Infinity,
+                          repeatType: "reverse",
+                          duration: 1.5,
+                        }}
+                        className="ml-2 inline-flex"
+                      >
+                        <Bot className="w-3 h-3 text-navy-lighter" />
+                      </motion.div>
                     )}
                   </h3>
                   {model.comingSoon && (

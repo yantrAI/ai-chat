@@ -25,6 +25,7 @@ export default function ChatPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
   const scrollToBottom = () => {
@@ -34,6 +35,13 @@ export default function ChatPage() {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+      textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
+    }
+  }, [input]);
 
   const stopGenerating = () => {
     if (abortControllerRef.current) {
@@ -322,13 +330,31 @@ export default function ChatPage() {
         <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-background/70 via-background/55 to-transparent pointer-events-none" />
         <div className="relative w-[90%] mx-auto px-4 pb-6">
           <form onSubmit={handleSubmit} className="relative">
-            <input
-              type="text"
+            <textarea
+              ref={textareaRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  if (input.trim() && !isLoading) {
+                    handleSubmit(
+                      e as unknown as React.FormEvent<HTMLFormElement>
+                    );
+                  }
+                }
+              }}
+              rows={1}
+              style={{
+                minHeight: "56px",
+                maxHeight: "200px",
+                resize: "none",
+                overflowY: input.split("\n").length > 4 ? "auto" : "hidden",
+                height: "auto",
+              }}
               placeholder={`Ask ${selectedModel.name} anything...`}
               className={cn(
-                "w-full px-6 py-4 bg-navy/80 backdrop-blur-sm rounded-lg border border-navy-light shadow-lg",
+                "w-full px-6 py-4 bg-navy/80 backdrop-blur-sm rounded overflow-hidden-lg border border-navy-light shadow-lg",
                 "text-navy-lightest placeholder-navy-lighter",
                 "focus:outline-none focus:ring-2 focus:ring-navy-lighter focus:border-transparent",
                 "disabled:opacity-50 disabled:cursor-not-allowed",

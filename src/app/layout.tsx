@@ -18,7 +18,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`{inter.className} antialiased
+        className={`${inter.className} antialiased
           bg-background relative
           before:fixed before:inset-0
           before:bg-[repeating-linear-gradient(45deg,rgb(51,65,85)_0px,rgb(51,65,85)_1px,transparent_1px,transparent_40px)]
