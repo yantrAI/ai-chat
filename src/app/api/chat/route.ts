@@ -75,14 +75,14 @@ export async function POST(req: Request) {
     if (agentConfig) {
       prompt += "# WHOLE CONTEXT (ALWAYS VALID)\n";
       if (agentConfig.name) {
-        prompt += `AGENT IDENTITY: ${agentConfig.name}\n`;
+        prompt += `AGENT IDENTITY: You are ${agentConfig.name}\n`;
       }
       if (agentConfig.instructions) {
-        prompt += "CORE OPERATING PRINCIPLES:\n";
+        prompt += "CORE OPERATING PRINCIPLES by the user:\n";
         prompt += `${agentConfig.instructions}\n\n`;
       }
       if (agentConfig.rules) {
-        prompt += "IMMUTABLE CONSTRAINTS:\n";
+        prompt += "IMMUTABLE CONSTRAINTS by the user:\n";
         prompt += `${agentConfig.rules}\n\n`;
       }
       prompt += "CONTEXTUAL AWARENESS DIRECTIVES:\n";

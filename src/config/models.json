@@ -1,24 +1,45 @@
 {
   "models": [
     {
-      "id": "gemma-2b",
-      "name": "Gemma 2B",
-      "description": "Google's lightweight and capable model",
+      "id": "hermes-3-8b",
+      "name": "Hermes-3 Llama",
+      "description": "Advanced open-source model based on Llama architecture",
       "features": [
-        "Fast responses",
+        "Strong reasoning",
         "Efficient processing",
-        "Helpful assistant"
+        "Balanced performance"
       ],
       "active": true,
-      "provider": "Google",
+      "provider": "Nous Research",
       "category": ["general", "chat"],
       "config": {
-        "model": "google/gemma-2b-it",
+        "model": "NousResearch/Hermes-3-Llama-3.1-8B",
         "temperature": 0.7,
-        "stopTokens": ["<end_of_turn>", "</s>"],
+        "stopTokens": ["<|im_end|>", "</s>"],
         "promptTemplate": {
-          "human": "<start_of_turn>user\n{message}<end_of_turn>\nassistant\n",
-          "assistant": ""
+          "system": "<|im_start|>system\nYou are a helpful AI assistant.<|im_end|>\n",
+          "human": "<|im_start|>user\n{message}<|im_end|>\n<|im_start|>assistant\n"
+        }
+      }
+    },
+    {
+      "id": "qwen-coder-32b",
+      "name": "Qwen2.5 Coder 32B",
+      "description": "Specialized coding model with extensive programming knowledge",
+      "features": [
+        "Code generation",
+        "Technical documentation",
+        "Problem solving"
+      ],
+      "active": true,
+      "provider": "Qwen",
+      "category": ["coding", "development"],
+      "config": {
+        "model": "Qwen/Qwen2.5-Coder-32B-Instruct",
+        "temperature": 0.7,
+        "stopTokens": ["<|im_end|>", "</s>"],
+        "promptTemplate": {
+          "human": "<|im_start|>user\n{message}<|im_end|>\n<|im_start|>assistant\n"
         }
       }
     },
@@ -61,48 +82,6 @@
       }
     },
     {
-      "id": "qwq-32b",
-      "name": "QwQ 32B Preview",
-      "description": "Large-scale preview model with advanced capabilities",
-      "features": [
-        "Advanced reasoning",
-        "Complex problem solving",
-        "High performance"
-      ],
-      "active": true,
-      "provider": "Qwen",
-      "category": ["general", "chat"],
-      "config": {
-        "model": "Qwen/QwQ-32B-Preview",
-        "temperature": 0.7,
-        "stopTokens": ["<|im_end|>", "</s>"],
-        "promptTemplate": {
-          "human": "<|im_start|>user\n{message}<|im_end|>\n<|im_start|>assistant\n"
-        }
-      }
-    },
-    {
-      "id": "qwen-coder-32b",
-      "name": "Qwen2.5 Coder 32B",
-      "description": "Specialized coding model with extensive programming knowledge",
-      "features": [
-        "Code generation",
-        "Technical documentation",
-        "Problem solving"
-      ],
-      "active": true,
-      "provider": "Qwen",
-      "category": ["coding", "development"],
-      "config": {
-        "model": "Qwen/Qwen2.5-Coder-32B-Instruct",
-        "temperature": 0.7,
-        "stopTokens": ["<|im_end|>", "</s>"],
-        "promptTemplate": {
-          "human": "<|im_start|>user\n{message}<|im_end|>\n<|im_start|>assistant\n"
-        }
-      }
-    },
-    {
       "id": "phi-3-mini",
       "name": "Phi-3.5 Mini",
       "description": "Microsoft's compact but powerful instruction-following model",
@@ -120,23 +99,65 @@
       }
     },
     {
-      "id": "hermes-3-8b",
-      "name": "Hermes-3 Llama",
-      "description": "Advanced open-source model based on Llama architecture",
+      "id": "deepseek-r1-32b",
+      "name": "DeepSeek-R1 32B",
+      "description": "High-performance model from DeepSeek AI with advanced capabilities",
       "features": [
-        "Strong reasoning",
-        "Efficient processing",
-        "Balanced performance"
+        "Advanced reasoning",
+        "Natural language understanding",
+        "Versatile applications"
       ],
       "active": true,
-      "provider": "Nous Research",
+      "provider": "DeepSeek AI",
       "category": ["general", "chat"],
       "config": {
-        "model": "NousResearch/Hermes-3-Llama-3.1-8B",
+        "model": "deepseek-ai/DeepSeek-R1-Distill-Qwen-32B",
+        "temperature": 0.7,
+        "stopTokens": ["<|im_end|>", "<|im_start|>", "</s>"],
+        "promptTemplate": {
+          "human": "<|im_start|>user\n{message}<|im_end|>\n<|im_start|>assistant\n"
+        }
+      }
+    },
+    {
+      "id": "gemma-2b",
+      "name": "Gemma 2B",
+      "description": "Google's lightweight and capable model",
+      "features": [
+        "Fast responses",
+        "Efficient processing",
+        "Helpful assistant"
+      ],
+      "active": true,
+      "provider": "Google",
+      "category": ["general", "chat"],
+      "config": {
+        "model": "google/gemma-2b-it",
+        "temperature": 0.7,
+        "stopTokens": ["<end_of_turn>", "</s>"],
+        "promptTemplate": {
+          "human": "<start_of_turn>user\n{message}<end_of_turn>\nassistant\n",
+          "assistant": ""
+        }
+      }
+    },
+    {
+      "id": "qwq-32b",
+      "name": "QwQ 32B Preview",
+      "description": "Large-scale preview model with advanced capabilities",
+      "features": [
+        "Advanced reasoning",
+        "Complex problem solving",
+        "High performance"
+      ],
+      "active": true,
+      "provider": "Qwen",
+      "category": ["general", "chat"],
+      "config": {
+        "model": "Qwen/QwQ-32B-Preview",
         "temperature": 0.7,
         "stopTokens": ["<|im_end|>", "</s>"],
         "promptTemplate": {
-          "system": "<|im_start|>system\nYou are a helpful AI assistant.<|im_end|>\n",
           "human": "<|im_start|>user\n{message}<|im_end|>\n<|im_start|>assistant\n"
         }
       }
