@@ -2,7 +2,6 @@ import { CallbackManagerForLLMRun } from "@langchain/core/callbacks/manager";
 import {
   BaseChatModel,
   BaseChatModelCallOptions,
-  BaseChatModelParams,
 } from "@langchain/core/language_models/chat_models";
 import {
   AIMessage,
@@ -12,120 +11,47 @@ import {
 import { ChatResult, ChatGenerationChunk } from "@langchain/core/outputs";
 import { HuggingFaceInference } from "@langchain/community/llms/hf";
 
-export interface HuggingFaceChatOptions extends BaseChatModelCallOptions {
+export interface HuggingFaceChatCallOptions extends BaseChatModelCallOptions {
   stop?: string[];
 }
 
-export interface HuggingFaceChatParams extends BaseChatModelParams {
+export interface HuggingFaceChatInput {
   model: string;
   apiKey: string;
   temperature?: number;
   maxTokens?: number;
+  stopSequences?: string[];
 }
 
-export class HuggingFaceChat extends BaseChatModel<HuggingFaceChatOptions> {
+export class HuggingFaceChat extends BaseChatModel<HuggingFaceChatCallOptions> {
   private client: HuggingFaceInference;
-  private model: string;
-  private apiKey: string;
-  private temperature: number;
-  private maxTokens: number;
+  private modelName: string;
+  private stopSequences: string[];
 
-  static lc_name(): string {
-    return "HuggingFaceChat";
-  }
+  constructor(fields: HuggingFaceChatInput) {
+    super({});
 
-  constructor(fields: HuggingFaceChatParams) {
-    super(fields);
+    this.modelName = fields.model;
+    this.stopSequences = fields.stopSequences ?? [];
+
     this.client = new HuggingFaceInference({
       model: fields.model,
       apiKey: fields.apiKey,
-      temperature: fields.temperature ?? 0.7,
-      maxTokens: fields.maxTokens ?? 1024,
+      temperature: fields.temperature,
+      maxTokens: fields.maxTokens,
+      stopSequences: this.stopSequences,
     });
-    this.model = fields.model;
-    this.apiKey = fields.apiKey;
-    this.temperature = fields.temperature ?? 0.7;
-    this.maxTokens = fields.maxTokens ?? 1024;
   }
 
-  invocationParams(options?: this["ParsedCallOptions"]) {
-    return {
-      model: this.model,
-      temperature: this.temperature,
-      maxTokens: this.maxTokens,
-      stop: options?.stop,
-    };
+  _combinedStopSequences(options?: this["ParsedCallOptions"]): string[] {
+    return [...this.stopSequences, ...(options?.stop ?? [])];
   }
 
-  private formatText(text: string): string {
-    // Only remove stop words, keep everything else exactly as is
-    return text
-      .replace(/<eos>/g, "")
-      .replace(/<end_of_turn>/g, "")
-      .replace(/\s*<\/s>\s*/g, "")
-      .replace(/<\|im_end\|>/g, "")
-      .replace(/<\|im_start\|>/g, "")
-      .replace(/<\|endoftext\|>/g, "")
-      .replace(/<\|end_of_text\|>/g, "")
-      .replace(/<\|begin_of_text\|>/g, "")
-      .replace(/<\|begin_of_text\|>:\/\/>/g, "")
-      .replace(/\<\|end\|>/g, "");
+  _llmType(): string {
+    return "huggingface_chat";
   }
 
   private _convertMessagesToPrompt(messages: BaseMessage[]): string {
-    const systemMessage = messages.find((m) => m._getType() === "system");
-    const userMessage = messages[messages.length - 1];
-    const recentHistory = messages
-      .slice(-4)
-      .filter((m) => m._getType() !== "system")
-      .map((m) => m.content);
-
-    // Join messages without adding extra newlines
-    return `${systemMessage?.content || ""}Previous conversation:${recentHistory.join("")}Current question:${userMessage.content}Response:`;
-  }
-
-  async *_streamResponseChunks(
-    messages: BaseMessage[],
-    options: this["ParsedCallOptions"],
-    runManager?: CallbackManagerForLLMRun
-  ): AsyncGenerator<ChatGenerationChunk> {
-    try {
-      const prompt = this._convertMessagesToPrompt(messages);
-      const stream = await this.client.stream(prompt, {
-        ...options,
-      });
-
-      for await (const chunk of stream) {
-        if (!chunk) continue;
-
-        // Just remove stop words and send immediately
-        const rawText = this.formatText(chunk);
-
-        if (rawText) {
-          const messageChunk = new AIMessageChunk({
-            content: rawText,
-          });
-          await runManager?.handleLLMNewToken(rawText);
-
-          yield new ChatGenerationChunk({
-            message: messageChunk,
-            text: rawText,
-          });
-        }
-      }
-    } catch (error) {
-      console.error("Error in streaming response:", error);
-      throw error;
-    }
-  }
-
-  /** @ignore */
-  async _generate(
-    messages: BaseMessage[],
-    options: this["ParsedCallOptions"],
-    runManager?: CallbackManagerForLLMRun
-  ): Promise<ChatResult> {
-    const params = this.invocationParams(options);
     const messageStrings = messages.map((message) => {
       if (typeof message.content !== "string") {
         throw new Error("Multimodal messages are not supported");
@@ -133,55 +59,76 @@ export class HuggingFaceChat extends BaseChatModel<HuggingFaceChatOptions> {
       return `${message._getType()}: ${message.content}`;
     });
 
-    const response = await fetch(
-      "https://api-inference.huggingface.co/models/" + this.model,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${this.apiKey}`,
-        },
-        body: JSON.stringify({
-          inputs: messageStrings.join(""),
-          parameters: {
-            temperature: params.temperature,
-            max_new_tokens: params.maxTokens,
-            return_full_text: false,
-            stop: params.stop,
-          },
-        }),
-      }
-    );
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    const result = await response.json();
-    const content = result[0]?.generated_text ?? "";
-
-    await runManager?.handleLLMNewToken(content);
-
-    return {
-      generations: [
-        {
-          message: new AIMessage({ content }),
-          text: content,
-        },
-      ],
-      llmOutput: {
-        tokenUsage: {
-          completionTokens: content.split(" ").length,
-          promptTokens: messageStrings.join("").split(" ").length,
-          totalTokens:
-            content.split(" ").length +
-            messageStrings.join("").split(" ").length,
-        },
-      },
-    };
+    return messageStrings.join("\n");
   }
 
-  _llmType(): string {
-    return "huggingface_chat";
+  private _cleanResponse(text: string, stopSequences: string[]): string {
+    let cleaned = text;
+    for (const stop of stopSequences) {
+      // Create a regex that matches the stop sequence at the end of the text
+      const regex = new RegExp(
+        `${stop.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`
+      );
+      cleaned = cleaned.replace(regex, "");
+    }
+    return cleaned;
+  }
+
+  async *_streamResponseChunks(
+    messages: BaseMessage[],
+    options: this["ParsedCallOptions"],
+    runManager?: CallbackManagerForLLMRun
+  ): AsyncGenerator<ChatGenerationChunk> {
+    const prompt = this._convertMessagesToPrompt(messages);
+    const stopSequences = this._combinedStopSequences(options);
+    const stream = await this.client.stream(prompt, {
+      stop: stopSequences,
+    });
+
+    for await (const chunk of stream) {
+      if (!chunk) continue;
+
+      const cleanedChunk = this._cleanResponse(chunk, stopSequences);
+      if (!cleanedChunk) continue;
+
+      const messageChunk = new AIMessageChunk({
+        content: cleanedChunk,
+      });
+      await runManager?.handleLLMNewToken(cleanedChunk);
+
+      yield new ChatGenerationChunk({
+        message: messageChunk,
+        text: cleanedChunk,
+      });
+    }
+  }
+
+  async _generate(
+    messages: BaseMessage[],
+    options: this["ParsedCallOptions"],
+    runManager?: CallbackManagerForLLMRun
+  ): Promise<ChatResult> {
+    try {
+      const prompt = this._convertMessagesToPrompt(messages);
+      const stopSequences = this._combinedStopSequences(options);
+      const response = await this.client.invoke(prompt, {
+        stop: stopSequences,
+      });
+
+      const cleanedResponse = this._cleanResponse(response, stopSequences);
+      const message = new AIMessage(cleanedResponse);
+
+      return {
+        generations: [
+          {
+            message,
+            text: cleanedResponse,
+          },
+        ],
+      };
+    } catch (error) {
+      console.error("Error in generating response:", error);
+      throw error;
+    }
   }
 }

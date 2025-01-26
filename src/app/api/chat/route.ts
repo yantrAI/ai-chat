@@ -50,18 +50,19 @@ export async function POST(req: Request) {
       (m: ModelConfig) => m.id === modelId && m.active
     );
 
-    if (!selectedModel || !selectedModel.config) {
+    if (!selectedModel) {
       return new Response(
-        JSON.stringify({ error: "Selected model not found or not active" }),
-        { status: 400 }
+        JSON.stringify({ error: "Selected model not found or inactive" }),
+        { status: 404 }
       );
     }
 
-    const model = new HuggingFaceChat({
+    const chat = new HuggingFaceChat({
       model: selectedModel.config.model,
       apiKey: process.env.HUGGINGFACE_API_KEY!,
       temperature: selectedModel.config.temperature,
-      maxTokens: Math.min(selectedModel.config.maxTokens, 2048),
+      maxTokens: selectedModel.config.maxTokens,
+      stopSequences: selectedModel.config.stopTokens,
     });
 
     // Create a model-specific prompt template
@@ -95,9 +96,7 @@ export async function POST(req: Request) {
 
         try {
           // Use the streaming API directly with the model
-          const stream = await model.stream(prompt, {
-            stop: selectedModel.config.stopTokens || ["</s>"],
-          });
+          const stream = await chat.stream(prompt);
 
           for await (const chunk of stream) {
             hasStartedResponse = true;

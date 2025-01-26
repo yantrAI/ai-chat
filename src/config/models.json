@@ -61,27 +61,6 @@
       }
     },
     {
-      "id": "qwen2-vl-7b",
-      "name": "Qwen2 VL 7B",
-      "description": "Multimodal model capable of understanding text and images",
-      "features": [
-        "Vision-language tasks",
-        "Multimodal understanding",
-        "Visual reasoning"
-      ],
-      "active": true,
-      "provider": "Qwen",
-      "category": ["multimodal", "vision"],
-      "config": {
-        "model": "Qwen/Qwen2-VL-7B-Instruct",
-        "temperature": 0.7,
-        "stopTokens": ["<|im_end|>", "</s>"],
-        "promptTemplate": {
-          "human": "<|im_start|>user\n{message}<|im_end|>\n<|im_start|>assistant\n"
-        }
-      }
-    },
-    {
       "id": "qwq-32b",
       "name": "QwQ 32B Preview",
       "description": "Large-scale preview model with advanced capabilities",
