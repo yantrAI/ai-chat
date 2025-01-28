@@ -41,7 +41,8 @@
         "promptTemplate": {
           "human": "<|im_start|>user\n{message}<|im_end|>\n<|im_start|>assistant\n"
         }
-      }
+      },
+      "supportToolCall": true
     },
     {
       "id": "mistral-nemo",
@@ -58,7 +59,8 @@
         "promptTemplate": {
           "human": "<s>[INST] {message} [/INST]"
         }
-      }
+      },
+      "supportToolCall": true
     },
     {
       "id": "mistral-7b-v03",
@@ -79,7 +81,8 @@
         "promptTemplate": {
           "human": "<s>[INST] {message} [/INST]"
         }
-      }
+      },
+      "supportToolCall": true
     },
     {
       "id": "phi-3-mini",
@@ -139,7 +142,8 @@
           "human": "<start_of_turn>user\n{message}<end_of_turn>\nassistant\n",
           "assistant": ""
         }
-      }
+      },
+      "supportToolCall": true
     },
     {
       "id": "qwq-32b",
@@ -160,7 +164,8 @@
         "promptTemplate": {
           "human": "<|im_start|>user\n{message}<|im_end|>\n<|im_start|>assistant\n"
         }
-      }
+      },
+      "supportToolCall": true
     }
   ]
 }
