@@ -1,4 +1,5 @@
 import { HuggingFaceChat } from "@/lib/custom-chat-model";
+import { SearchTool } from "@/lib/tools/search-tool";
 
 if (!process.env.HUGGINGFACE_API_KEY) {
   throw new Error("Missing HUGGINGFACE_API_KEY environment variable");
@@ -11,6 +12,7 @@ type ModelConfig = {
   features: string[];
   active: boolean;
   comingSoon?: boolean;
+  supportToolCall?: boolean;
   config: {
     model: string;
     temperature: number;
@@ -23,6 +25,9 @@ type ModelConfig = {
     };
   };
 };
+
+// Initialize available tools
+const tools = [new SearchTool()];
 
 export async function POST(req: Request) {
   const controller = new AbortController();
@@ -66,6 +71,8 @@ export async function POST(req: Request) {
       temperature: selectedModel.config.temperature,
       maxTokens: selectedModel.config.maxTokens,
       stopSequences: selectedModel.config.stopTokens,
+      // Only add tools if the model supports tool calling
+      tools: selectedModel.supportToolCall ? tools : undefined,
     });
 
     // Create a model-specific prompt template
@@ -133,13 +140,13 @@ export async function POST(req: Request) {
           if (!hasStartedResponse) {
             console.error("No response was generated from the model");
             const errorChunk = encoder.encode(
-              `data: Error: Model did not generate any response. Please try again.`
+              `data: Error: Model did not generate any response. Please try again.\n\n`
             );
             controller.enqueue(errorChunk);
           }
 
           // Send end of stream
-          controller.enqueue(encoder.encode(`data: [DONE]`));
+          controller.enqueue(encoder.encode(`data: [DONE]\n\n`));
           controller.close();
         } catch (error) {
           console.error("Streaming error details:", {
@@ -157,9 +164,9 @@ export async function POST(req: Request) {
 
           console.error("Full error context:", errorMessage);
 
-          const errorChunk = encoder.encode(`data: Error: ${errorMessage}`);
+          const errorChunk = encoder.encode(`data: Error: ${errorMessage}\n\n`);
           controller.enqueue(errorChunk);
-          controller.enqueue(encoder.encode(`data: [DONE]`));
+          controller.enqueue(encoder.encode(`data: [DONE]\n\n`));
           controller.close();
         }
       },
