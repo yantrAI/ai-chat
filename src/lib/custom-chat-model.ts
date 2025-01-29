@@ -166,84 +166,126 @@ export class HuggingFaceChat extends BaseChatModel<HuggingFaceChatCallOptions> {
     options: this["ParsedCallOptions"],
     runManager?: CallbackManagerForLLMRun
   ): AsyncGenerator<ChatGenerationChunk> {
-    const prompt = this._convertMessagesToPrompt(messages);
-    console.log("Generated prompt:", prompt);
-
+    let currentMessages = [...messages];
     const stopSequences = this._combinedStopSequences(options);
-    const stream = await this.client.stream(prompt, {
-      stop: stopSequences,
-    });
 
-    let buffer = "";
-    for await (const chunk of stream) {
-      if (!chunk) continue;
+    while (true) {
+      const prompt = this._convertMessagesToPrompt(currentMessages);
+      console.log("Generated prompt:", prompt);
 
-      const cleanedChunk = this._cleanResponse(chunk, stopSequences);
-      if (!cleanedChunk) continue;
+      const stream = await this.client.stream(prompt, {
+        stop: stopSequences,
+      });
 
-      buffer += cleanedChunk;
-      console.log("Current buffer:", buffer);
+      let buffer = "";
+      let hasToolCall = false;
 
-      const toolCall = this._parseToolCall(buffer);
-      if (toolCall) {
-        console.log("Found tool call:", toolCall);
-        // If we found a tool call, execute it
-        const tool = this.tools.find((t) => t.name === toolCall.name);
-        if (tool) {
-          try {
-            console.log(
-              "Executing tool:",
-              tool.name,
-              "with args:",
-              toolCall.arguments
-            );
-            const result = await tool.call(toolCall.arguments);
-            console.log("Tool result:", result);
+      for await (const chunk of stream) {
+        if (!chunk) continue;
 
-            const messageChunk = new AIMessageChunk({
-              content: `Tool '${toolCall.name}' result: ${result.output}`,
-            });
-            if (runManager) {
-              await runManager.handleLLMNewToken(
-                messageChunk.content as string
+        const cleanedChunk = this._cleanResponse(chunk, stopSequences);
+        if (!cleanedChunk) continue;
+
+        buffer += cleanedChunk;
+
+        const toolCall = this._parseToolCall(buffer);
+        if (toolCall) {
+          hasToolCall = true;
+          const tool = this.tools.find((t) => t.name === toolCall.name);
+          if (tool) {
+            try {
+              console.log(
+                "Executing tool:",
+                tool.name,
+                "with args:",
+                toolCall.arguments
               );
+              const result = await tool.call(toolCall.arguments);
+              console.log("Tool result:", result);
+
+              // Add the AI's tool call message
+              const aiMessage = new AIMessage({
+                content: buffer,
+                additional_kwargs: {
+                  tool_calls: [{
+                    id: `call_${Date.now()}`,
+                    type: 'function',
+                    function: {
+                      name: toolCall.name,
+                      arguments: JSON.stringify(toolCall.arguments)
+                    }
+                  }]
+                }
+              });
+              currentMessages.push(aiMessage);
+
+              // Add the tool's response
+              const functionMessage = new FunctionMessage({
+                content: result.output,
+                name: toolCall.name,
+                additional_kwargs: {}
+              });
+              currentMessages.push(functionMessage);
+
+              // Yield both messages as chunks
+              yield new ChatGenerationChunk({
+                message: new AIMessageChunk({
+                  content: buffer
+                }),
+                text: buffer,
+              });
+
+              yield new ChatGenerationChunk({
+                message: new AIMessageChunk({
+                  content: `Tool '${toolCall.name}' result: ${result.output}`
+                }),
+                text: `Tool '${toolCall.name}' result: ${result.output}`,
+              });
+
+              buffer = ""; // Reset buffer for next response
+              break; // Break to start new stream with updated messages
+
+            } catch (error) {
+              console.error("Tool execution failed:", error);
+              const errorMessage =
+                error instanceof Error ? error.message : "Unknown error";
+              const messageChunk = new AIMessageChunk({
+                content: `Tool '${toolCall.name}' failed: ${errorMessage}`
+              });
+              if (runManager) {
+                await runManager.handleLLMNewToken(messageChunk.content as string);
+              }
+              yield new ChatGenerationChunk({
+                message: messageChunk,
+                text: messageChunk.content as string,
+              });
+              return; // End the conversation on error
             }
-            yield new ChatGenerationChunk({
-              message: messageChunk,
-              text: messageChunk.content as string,
-            });
-          } catch (error) {
-            console.error("Tool execution failed:", error);
-            const errorMessage =
-              error instanceof Error ? error.message : "Unknown error";
-            const messageChunk = new AIMessageChunk({
-              content: `Tool '${toolCall.name}' failed: ${errorMessage}`,
-            });
-            if (runManager) {
-              await runManager.handleLLMNewToken(
-                messageChunk.content as string
-              );
-            }
-            yield new ChatGenerationChunk({
-              message: messageChunk,
-              text: messageChunk.content as string,
-            });
+          } else {
+            console.warn("Tool not found:", toolCall.name);
           }
         } else {
-          console.warn("Tool not found:", toolCall.name);
+          // Regular response chunk
+          const messageChunk = new AIMessageChunk({
+            content: cleanedChunk,
+          });
+          if (runManager) {
+            await runManager.handleLLMNewToken(cleanedChunk);
+          }
+          yield new ChatGenerationChunk({
+            message: messageChunk,
+            text: cleanedChunk,
+          });
         }
-        buffer = ""; // Reset buffer after tool call
-      } else {
-        const messageChunk = new AIMessageChunk({
-          content: cleanedChunk,
-        });
-        if (runManager) {
-          await runManager.handleLLMNewToken(cleanedChunk);
+      }
+
+      // If no tool calls were made in this stream, we're done
+      if (!hasToolCall) {
+        // Add the final response to messages
+        if (buffer) {
+          currentMessages.push(new AIMessage({ content: buffer }));
         }
-        yield new ChatGenerationChunk({
-          message: messageChunk,
-          text: cleanedChunk,
-        });
+        break;
       }
     }
   }

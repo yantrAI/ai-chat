@@ -27,6 +27,11 @@ export class SearchTool extends BaseTool {
       .replace(/\b<\/b>\b/g, ""); // Remove standalone </b> tags
   }
 
+  private truncateDescription(description: string, maxLength: number = 300): string {
+    if (description.length <= maxLength) return description;
+    return description.slice(0, maxLength) + "...";
+  }
+
   async func(args: SearchParams): Promise<string> {
     try {
       const results = await search(args.query, {
@@ -34,46 +39,63 @@ export class SearchTool extends BaseTool {
       });
 
       if (results.noResults || !results.results.length) {
-        return "No results found.";
+        return [
+          "\n<searching>\n",
+          "STATUS: NO_RESULTS",
+          `QUERY: "${args.query}"`,
+          "MESSAGE: No matching results found",
+          "",
+          "- Try again later",
+          "\n</searching>\n",
+        ].join("\n");
       }
 
-      // Take only the requested number of results
-      const limitedResults = results.results.slice(0, args.maxResults);
+      // Take only the requested number of results (max 5 to limit tokens)
+      const maxResults = Math.min(args.maxResults, 5);
+      const limitedResults = results.results.slice(0, maxResults);
 
       // Format results with clear sections and spacing
       const formattedResults = limitedResults
         .map((result: SearchResult, index: number) => {
           const title = this.cleanText(result.title);
-          const description = this.cleanText(result.description);
+          const description = this.truncateDescription(this.cleanText(result.description));
 
           return [
-            `[Result ${index + 1}]`,
-            `Title: ${title}`,
-            `Summary: ${description}`,
+            `[RESULT ${index + 1}]`,
+            `TITLE: ${title}`,
+            `DESCRIPTION: ${description}`,
             `URL: ${result.url}`,
-            "Suggestion: If this result seems relevant, you can fetch its full content using the url_fetch tool.",
             "", // Empty line for spacing
           ].join("\n");
         })
         .join("\n");
 
       return [
-        "Search Results:",
-        "I found the following results. For each result, I'll indicate if it might be worth fetching the full content.",
+        "\n<searching>\n",
+        "STATUS: SUCCESS",
+        `QUERY: "${args.query}"`,
+        `TOTAL_RESULTS: ${results.results.length}`,
+        `SHOWING: ${maxResults}`,
         "",
+        "RESULTS:",
         formattedResults,
         "",
-        "Next Steps:",
-        "1. Review these results to identify the most relevant URLs",
-        "2. Use the url_fetch tool to get detailed content from promising URLs",
-        "3. You can fetch multiple URLs if needed to gather comprehensive information",
-        "4. For documentation or article pages, try using the 'main' or 'article' selector",
+        "NOTE: Use url_fetch tool to analyze specific URLs in detail",
+        "\n</searching>\n",
+        "TOOL_CALL_DONE",
+        " \n",
       ].join("\n");
     } catch (error) {
       console.error("Search error:", error);
-      throw new Error(
-        `Failed to search: ${error instanceof Error ? error.message : "Unknown error"}`
-      );
+      return [
+        "\n<searching>\n",
+        "STATUS: ERROR",
+        `QUERY: "${args.query}"`,
+        `ERROR: ${error instanceof Error ? error.message : "Unknown error"}`,
+        "",
+        "- Try again later",
+        "\n</searching>\n",
+      ].join("\n");
     }
   }
 }

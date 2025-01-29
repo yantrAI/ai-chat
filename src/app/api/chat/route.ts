@@ -1,5 +1,6 @@
 import { HuggingFaceChat } from "@/lib/custom-chat-model";
 import { SearchTool } from "@/lib/tools/search-tool";
+import { URLFetchTool } from "@/lib/tools/url-fetch-tool";
 
 if (!process.env.HUGGINGFACE_API_KEY) {
   throw new Error("Missing HUGGINGFACE_API_KEY environment variable");
@@ -27,7 +28,7 @@ type ModelConfig = {
 };
 
 // Initialize available tools
-const tools = [new SearchTool()];
+const tools = [new SearchTool(), new URLFetchTool()];
 
 export async function POST(req: Request) {
   const controller = new AbortController();
@@ -146,7 +147,7 @@ export async function POST(req: Request) {
           }
 
           // Send end of stream
-          controller.enqueue(encoder.encode(`data: [DONE]\n\n`));
+          controller.enqueue(encoder.encode(`data: \n\n`));
           controller.close();
         } catch (error) {
           console.error("Streaming error details:", {
@@ -166,7 +167,7 @@ export async function POST(req: Request) {
 
           const errorChunk = encoder.encode(`data: Error: ${errorMessage}\n\n`);
           controller.enqueue(errorChunk);
-          controller.enqueue(encoder.encode(`data: [DONE]\n\n`));
+          controller.enqueue(encoder.encode(`data: \n\n`));
           controller.close();
         }
       },

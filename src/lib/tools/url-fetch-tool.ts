@@ -26,6 +26,17 @@ export class URLFetchTool extends BaseTool {
       .replace(/&amp;/g, "&");
   }
 
+  private truncateContent(content: string, maxLength: number = 4000): string {
+    if (content.length <= maxLength) return content;
+    
+    // Take first 2000 chars and last 2000 chars if exceeding limit
+    const halfLength = Math.floor(maxLength / 2);
+    const firstHalf = content.slice(0, halfLength);
+    const secondHalf = content.slice(-halfLength);
+    
+    return `${firstHalf}\n...[${content.length - maxLength} characters truncated]...\n${secondHalf}`;
+  }
+
   async func(args: URLParams): Promise<string> {
     try {
       // Fetch the webpage
@@ -86,46 +97,55 @@ export class URLFetchTool extends BaseTool {
             .join("\n");
           if (altContent.trim()) {
             return [
-              `URL: ${args.url}`,
-              `Title: ${pageTitle}`,
-              `Note: No content found with selector "${args.selector}", using "${altSelector}" instead.`,
-              "Content:",
-              this.cleanText(altContent).slice(0, 2000),
+              `\n<fetching ${args.url} >\n`,
+              "STATUS: SUCCESS_WITH_ALT_SELECTOR",
+              `TITLE: ${pageTitle}`,
+              `ORIGINAL_SELECTOR: ${args.selector}`,
+              `USED_SELECTOR: ${altSelector}`,
               "",
-              "Next Steps:",
-              "1. Review this content to find the information you need",
-              "2. If the content is not what you expected, try a different selector",
-              "3. You can search for more URLs if needed",
-              altContent.length > 2000 ? "\n[Content truncated...]" : "",
+              "CONTENT:",
+              this.truncateContent(this.cleanText(altContent)),
+              "</fetching>\n",
+              "TOOL_CALL_DONE",
+              "\n",
             ].join("\n");
           }
         }
-        return `No content found at ${args.url} with selector "${args.selector}" or common alternative selectors.`;
+        return [
+          `\n<fetching ${args.url} >\n`,
+          "STATUS: NO_CONTENT",
+          `ATTEMPTED_SELECTOR: ${args.selector}`,
+          "MESSAGE: No content found with specified or alternative selectors",
+          "",
+          "- Try again",
+          "</fetching>\n",
+        ].join("\n");
       }
 
       const cleanedContent = this.cleanText(content);
-      const truncatedContent = cleanedContent.slice(0, 2000); // Limit content length
 
       return [
-        `URL: ${args.url}`,
-        `Title: ${pageTitle}`,
-        `Selector: ${args.selector}`,
-        "Content:",
-        truncatedContent,
+        `\n<fetching ${args.url} >\n`,
+        "STATUS: SUCCESS",
+        `TITLE: ${pageTitle}`,
+        `SELECTOR: ${args.selector}`,
         "",
-        "Next Steps:",
-        "1. Review this content to find the information you need",
-        "2. If the content is not what you expected, try a different selector",
-        "3. You can search for more URLs if needed",
-        truncatedContent.length < cleanedContent.length
-          ? "\n[Content truncated...]"
-          : "",
+        "CONTENT:",
+        this.truncateContent(cleanedContent),
+        "</fetching>\n",
+        "TOOL_CALL_DONE",
+        "\n",
       ].join("\n");
     } catch (error) {
       console.error("URL fetch error:", error);
-      throw new Error(
-        `Failed to fetch content: ${error instanceof Error ? error.message : "Unknown error"}`
-      );
+      return [
+        `\n<fetching ${args.url} >\n`,
+        "STATUS: ERROR",
+        `ERROR: ${error instanceof Error ? error.message : "Unknown error"}`,
+        "",
+        "- Try again later",
+        "</fetching>\n",
+      ].join("\n");
     }
   }
 }
