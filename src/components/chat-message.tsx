@@ -1,7 +1,8 @@
 "use client";
 
-import { memo, useMemo, useCallback, useEffect, useState } from "react";
+import { memo, useCallback, useEffect, useState } from "react";
 import ReactMarkdown, { Components } from "react-markdown";
+import { LLMAnalysis } from "@/components/llm-analysis";
 import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
@@ -131,66 +132,110 @@ const LoadingDots = () => (
 const ChatMessage = ({ role, content }: ChatMessageProps) => {
   const isUser = role === "user";
   const [copied, setCopied] = useState(false);
-  const [formattedParts, setFormattedParts] = useState<
-    Array<{
-      type: "text" | "code";
-      content: string;
-      language?: string;
-      isStreaming?: boolean;
-    }>
-  >([]);
+  const [formattedParts, setFormattedParts] = useState<Array<{
+    type: "text" | "code" | "tool-call";
+    content: string;
+    language?: string;
+    isStreaming?: boolean;
+  }>>([]);
+
 
   useEffect(() => {
     if (!isUser && content) {
       const processContent = async () => {
         try {
-          // Keep content exactly as received
-          let currentContent = content;
-          const codeBlockStart = currentContent.indexOf("```");
+            let currentContent = content;
+            let parts: Array<{
+            type: "text" | "code" | "tool-call";
+            content: string;
+            language?: string;
+            isStreaming?: boolean;
+            }> = [];
+            let currentIndex = 0;
 
-          // Always check for new code blocks
-          if (codeBlockStart !== -1) {
-            const beforeCode = currentContent.slice(0, codeBlockStart);
-            const afterStartMarker = currentContent.slice(codeBlockStart + 3);
-            const languageMatch = afterStartMarker.match(/^(\w+)?\n/);
-            const language = languageMatch ? languageMatch[1] || "text" : "text";
-            const codeEndIndex = currentContent.indexOf("```", codeBlockStart + 3);
+            // Check for TOOL_CALL sections
+            const toolCallStart = currentContent.indexOf("TOOL_CALL");
+            const toolCallEnd = currentContent.indexOf("TOOL_CALL_DONE");
 
-            if (codeEndIndex !== -1) {
-              // Complete code block
+            if (toolCallStart !== -1) {
+              // Add text before TOOL_CALL if exists
+              if (toolCallStart > 0) {
+              parts.push({
+                type: "text",
+                content: currentContent.slice(0, toolCallStart)
+              });
+              }
+
+              // Add tool call section
+              const toolCallContent = toolCallEnd !== -1 
+              ? currentContent.slice(toolCallStart, toolCallEnd + 14)
+              : currentContent.slice(toolCallStart);
+
+              parts.push({
+              type: "tool-call",
+              content: toolCallContent,
+              isStreaming: toolCallEnd === -1
+              });
+
+              // Process remaining content after TOOL_CALL_DONE
+              if (toolCallEnd !== -1) {
+              currentContent = currentContent.slice(toolCallEnd + 14);
+              currentIndex = 0;
+              }
+            }
+
+            // Process code blocks in remaining content
+            while (currentIndex < currentContent.length) {
+            const codeBlockStart = currentContent.indexOf("```", currentIndex);
+            
+            if (codeBlockStart !== -1) {
+              // Add text before code block
+              if (codeBlockStart > currentIndex) {
+              parts.push({
+                type: "text",
+                content: currentContent.slice(currentIndex, codeBlockStart)
+              });
+              }
+
+              const afterStartMarker = currentContent.slice(codeBlockStart + 3);
+              const languageMatch = afterStartMarker.match(/^(\w+)?\n/);
+              const language = languageMatch ? languageMatch[1] || "text" : "text";
+              const codeEndIndex = currentContent.indexOf("```", codeBlockStart + 3);
+
+              if (codeEndIndex !== -1) {
               const codeContent = currentContent
                 .slice(codeBlockStart + 3, codeEndIndex)
                 .replace(/^(\w+)?\n/, "");
-              const afterCode = currentContent.slice(codeEndIndex + 3);
 
-              setFormattedParts([
-                ...(beforeCode ? [{ type: "text" as const, content: beforeCode }] : []),
-                {
-                  type: "code" as const,
-                  content: codeContent,
-                  language,
-                  isStreaming: false,
-                },
-                ...(afterCode ? [{ type: "text" as const, content: afterCode }] : []),
-              ]);
-            } else {
-              // Incomplete code block
+              parts.push({
+                type: "code",
+                content: codeContent,
+                language,
+                isStreaming: false
+              });
+
+              currentIndex = codeEndIndex + 3;
+              } else {
               const codeContent = afterStartMarker.replace(/^(\w+)?\n/, "");
-
-              setFormattedParts([
-                ...(beforeCode ? [{ type: "text" as const, content: beforeCode }] : []),
-                {
-                  type: "code" as const,
-                  content: codeContent,
-                  language,
-                  isStreaming: true,
-                },
-              ]);
+              parts.push({
+                type: "code",
+                content: codeContent,
+                language,
+                isStreaming: true
+              });
+              break;
+              }
+            } else {
+              // Add remaining text
+              parts.push({
+              type: "text",
+              content: currentContent.slice(currentIndex)
+              });
+              break;
             }
-          } else {
-            // No code block, just text
-            setFormattedParts([{ type: "text", content: currentContent }]);
-          }
+            }
+
+            setFormattedParts(parts);
         } catch (err) {
           console.error("[ChatMessage] Content processing failed:", err);
           setFormattedParts([{ type: "text", content }]);
@@ -248,28 +293,38 @@ const ChatMessage = ({ role, content }: ChatMessageProps) => {
             </p>
           ) : formattedParts.length > 0 ? (
             <div className="space-y-4">
-              {formattedParts.map((part, index) =>
-                part.type === "text" ? (
-                  part.content ? (
-                    <MemoizedReactMarkdown
-                      key={index}
-                      remarkPlugins={[remarkGfm]}
-                      className="text-sm text-navy-lightest"
-                      components={components}
-                    >
-                      {part.content.trim()}
-                    </MemoizedReactMarkdown>
-                  ) : null
-                ) : (
-                  <CodeBlock
+                {formattedParts.map((part, index) => {
+                if (part.type === "tool-call") {
+                  return (
+                  <LLMAnalysis
                     key={index}
-                    language={part.language || "text"}
-                    value={part.content}
+                    content={part.content}
                     isStreaming={part.isStreaming}
-                    showLineNumbers={part.content.includes("\n")}
                   />
-                )
-              )}
+                  );
+                }
+                if (part.type === "text") {
+                  return part.content ? (
+                  <MemoizedReactMarkdown
+                    key={index}
+                    remarkPlugins={[remarkGfm]}
+                    className="text-sm text-navy-lightest"
+                    components={components}
+                  >
+                    {part.content.trim()}
+                  </MemoizedReactMarkdown>
+                  ) : null;
+                }
+                return (
+                  <CodeBlock
+                  key={index}
+                  language={part.language || "text"}
+                  value={part.content}
+                  isStreaming={part.isStreaming}
+                  showLineNumbers={part.content.includes("\n")}
+                  />
+                );
+                })}
             </div>
           ) : (
             <LoadingDots />
