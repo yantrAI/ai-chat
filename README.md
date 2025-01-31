@@ -48,13 +48,13 @@ A modern chat application built with Next.js that leverages Hugging Face's model
 ### Installation
 
 ```bash
-npm install
+pnpm install
 ```
 
 ### Development
 
 ```bash
-npm run dev
+pnpm run dev
 ```
 
 The application will start in development mode with Turbopack enabled.
@@ -62,8 +62,8 @@ The application will start in development mode with Turbopack enabled.
 ### Production Build
 
 ```bash
-npm run build
-npm start
+pnpm run build
+pnpm start
 ```
 
 ## Architecture
